@@ -92,19 +92,24 @@ async function loadPool() {
   return cache;
 }
 
-// Voor de uitzending: de nieuwste drie, met voorkeur voor berichten met genoeg tekst
-// om over door te vragen. Met `ids` (van de client) blijft een lopend gesprek bij
-// dezelfde verhalen in dezelfde volgorde.
+// Zoveel verhalen noemt de opening. De rest van de feed staat erachter, zodat je
+// ook naar ander nieuws kunt vragen.
+export const OPENING_COUNT = 3;
+
+// Alle berichten uit de feed. Vooraan de drie voor de opening: de nieuwste, met voorkeur
+// voor berichten met genoeg tekst om over door te vragen. Daarna de rest, nieuwste eerst.
+// Met `ids` (van de client) blijft een lopend gesprek bij dezelfde nummering; berichten
+// die sindsdien in de feed zijn gekomen, sluiten achteraan aan.
 export async function getStories(ids?: string[]): Promise<StorySet> {
   const { pool, live } = await loadPool();
+  const recent = [...pool].sort((a, b) => b.published.localeCompare(a.published));
 
   if (ids?.length) {
     const kept = ids.flatMap((id) => pool.filter((a) => a.id === id));
-    if (kept.length === ids.length) return { stories: kept, live };
+    if (kept.length > 0) return { stories: [...kept, ...recent.filter((a) => !kept.includes(a))], live };
   }
 
-  const recent = [...pool].sort((a, b) => b.published.localeCompare(a.published)).slice(0, 12);
-  const rich = recent.filter((a) => a.body.length >= 400);
-  const stories = [...rich, ...recent.filter((a) => !rich.includes(a))].slice(0, 3);
-  return { stories, live };
+  const rich = recent.slice(0, 12).filter((a) => a.body.length >= 400);
+  const opening = [...rich, ...recent.filter((a) => !rich.includes(a))].slice(0, OPENING_COUNT);
+  return { stories: [...opening, ...recent.filter((a) => !opening.includes(a))], live };
 }

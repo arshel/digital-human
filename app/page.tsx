@@ -82,13 +82,14 @@ export default function Page() {
     ask(history);
   }
 
-  // De openingsbriefing gaat over alle verhalen, een ander antwoord over één bron (of geen).
+  // De openingsbriefing gaat over de eerste drie verhalen (OPENING_COUNT in lib/news.ts; niet
+  // geïmporteerd omdat die module de demo-artikelen meeneemt), een ander antwoord over één bron (of geen).
   const currentSources = !current
     ? []
     : current.articleId
       ? stories.filter((a) => a.id === current.articleId)
       : lastAnswerIndex === 0
-        ? stories
+        ? stories.slice(0, 3)
         : [];
 
   return (

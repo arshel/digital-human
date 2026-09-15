@@ -1,4 +1,4 @@
-import type { Article } from './news';
+import { OPENING_COUNT, type Article } from './news';
 
 export type AnchorReply = { text: string; articleId: string | null };
 
@@ -65,8 +65,11 @@ function notCovered(articles: Article[]): AnchorReply {
 const ORDINALS: [RegExp, number][] = [
   [/\b(eerste|first|verhaal ?1|story ?1)\b/, 0],
   [/\b(tweede|second|verhaal ?2|story ?2)\b/, 1],
-  [/\b(derde|laatste|third|last|verhaal ?3|story ?3)\b/, 2],
+  [/\b(derde|third|verhaal ?3|story ?3)\b/, 2],
+  [/\b(vierde|fourth|verhaal ?4|story ?4)\b/, 3],
+  [/\b(vijfde|fifth|verhaal ?5|story ?5)\b/, 4],
 ];
+const LAST = /\b(laatste|last)\b/;
 
 const NEXT = /\b(volgende|next)\b/;
 const PREVIOUS = /\b(vorige|previous|terug|back)\b/;
@@ -86,11 +89,12 @@ function matchByTopic(question: string, articles: Article[]) {
   return articles.find((a) => TOPIC_SYNONYMS[a.topic]?.some(hit));
 }
 
-// Bij het laden van de pagina: alle geladen artikelen kort introduceren.
+// Bij het laden van de pagina: de eerste drie artikelen kort introduceren.
 // Verhaal 1 wordt de actieve context tot de gebruiker doorschuift of iets anders opzoekt.
 export function briefing(articles: Article[]): AnchorReply {
-  const parts = articles.map((a, i) => {
-    const cue = i === 0 ? 'Eerst' : i === articles.length - 1 ? 'Tot slot' : 'Dan';
+  const opening = articles.slice(0, OPENING_COUNT);
+  const parts = opening.map((a, i) => {
+    const cue = i === 0 ? 'Eerst' : i === opening.length - 1 ? 'Tot slot' : 'Dan';
     return `${cue}: ${a.title}. ${sentences(a.body)[0]}`;
   });
   return { text: `Drie verhalen vandaag. ${parts.join(' ')} Waar wil je meer over weten?`, articleId: articles[0].id };
@@ -99,8 +103,9 @@ export function briefing(articles: Article[]): AnchorReply {
 export function respond(question: string, articles: Article[], activeIndex: number | null): AnchorReply {
   const q = question.toLowerCase();
 
-  const ordinal = ORDINALS.find(([re]) => re.test(q));
+  const ordinal = ORDINALS.find(([re, i]) => re.test(q) && articles[i]);
   if (ordinal) return storyIntro(articles[ordinal[1]]);
+  if (LAST.test(q)) return storyIntro(articles[articles.length - 1]);
 
   if (NEXT.test(q)) {
     const last = articles.length - 1;

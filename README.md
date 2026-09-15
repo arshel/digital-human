@@ -30,7 +30,7 @@ app/globals.css              designtokens en layout
 
 1. De pagina laadt en vraagt `/api/anchor` om een opening, met een lege gespreksgeschiedenis.
 2. De server haalt de verhalen op via `getStories()` in `lib/news.ts`.
-3. De server geeft Gemini de systeeminstructie, de drie artikelen (genummerd, met id, bron, datum en volledige tekst) en het actieve onderwerp.
+3. De server geeft Gemini de systeeminstructie, alle artikelen uit de feed (de drie voor de opening vooraan, genummerd, met id, bron, datum en volledige tekst) en het actieve onderwerp.
 4. Gemini antwoordt in JSON: `{ text, articleId }`. `lib/ai.ts` controleert dat `articleId` echt een van de geladen artikelen is en voegt `mode` toe (`ai` of `fallback`).
 5. De server stuurt ook de verhalen mee terug. De pagina toont `text` onder het beeld, zet het actieve artikel en laat de bron zien.
 6. Bij elke vraag stuurt de pagina de hele geschiedenis, het actieve `articleId` en de ids van de verhalen mee. Zo snapt Gemini "die eerste", "dit" en "volgende onderwerp", en blijft het gesprek bij dezelfde drie verhalen, ook als de feed intussen ververst.
