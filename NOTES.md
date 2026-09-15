@@ -6,27 +6,37 @@ Lees dit samen met de README. De README beschrijft wat er staat, dit bestand bes
 
 Prototype voor de minor Digital Humans (sept 2026 - feb 2027). Opdracht: een AI virtual news anchor die jongeren van 16-24 dagelijks informeert, met een conversational interface en zichtbare bronnen. Beoordeling loopt via portfolio, dus keuzes moeten uit te leggen zijn — bij een wijziging in de architectuur of het design de reden hier of in de README bijschrijven.
 
-Fase nu: nieuws- en chatflow werkend. Avatar komt later.
+Fase nu: nieuws- en chatflow werkend op Gemini (free tier) met live nieuws uit de NOS-feed; terugval op regels en demo-artikelen. Avatar komt later.
 
 ## Harde regels
 
-- Nova gebruikt uitsluitend de tekst van het geselecteerde artikel. Geen websearch, geen tools, geen tweede artikel in dezelfde prompt.
-- De system prompt en de API-key blijven server-side in `app/api/anchor/route.ts`. De client stuurt alleen `articleId` en de gespreksgeschiedenis.
-- Wisselen van artikel wist de geschiedenis.
-- De bron blijft zichtbaar zolang er een artikel actief is: lower third met bron, datum en link, plus de uitklap met de originele tekst.
-- Staat een antwoord niet in het artikel, dan zegt Nova dat expliciet. Dat gedrag niet wegpoetsen om antwoorden vloeiender te maken.
+- Nova gebruikt voor nieuwsfeiten uitsluitend de tekst van de geladen artikelen. Geen websearch, geen tools, geen eigen kennis over actualiteit. Uitleg mag, maar als uitleg aangekondigd.
+- Elk antwoord hoort bij hooguit één artikel en meldt welk (`articleId`). Alleen de opening gaat over alle verhalen.
+- Systeeminstructie en `GEMINI_API_KEY` blijven server-side (`lib/ai.ts`, `lib/gemini.ts`). De client stuurt alleen de gespreksgeschiedenis en het actieve `articleId`.
+- Bronnen blijven zichtbaar: lower third voor het actieve verhaal, een bronregel onder het huidige antwoord, en de uitklap "Bronnen" met de originele tekst.
+- Staat een antwoord niet in de artikelen, dan zegt Nova dat expliciet. Dat gedrag niet wegpoetsen om antwoorden vloeiender te maken.
+- De app praat alleen met `generateNewsResponse()` in `lib/ai.ts`, nooit direct met Gemini. Alleen `lib/gemini.ts` kent de provider.
+- AI-logica en avatar blijven los van elkaar. De avatar krijgt tekst en bron binnen, maar weet niets van artikelen of het model.
+
+Gewijzigd op 15 sept 2026: de app opent nu direct op de presentator in plaats van op een artikelkeuze. De oude regels "één artikel per prompt" en "wisselen wist de geschiedenis" zijn vervallen: het gesprek loopt door over drie verhalen, zoals een echte uitzending. Om bronvermenging te voorkomen hoort nu elk antwoord bij hooguit één artikel.
+
+Gewijzigd op 15 sept 2026: Gemini (REST via `fetch`, geen SDK-dependency) vervangt de regelgebaseerde logica. Die blijft als terugval in `lib/fallback.ts`, omdat een free tier kan haperen en een demo niet stil mag vallen. De interface meldt het als de terugval actief is.
+
+Gewijzigd op 15 sept 2026: het nieuws komt live uit https://feeds.nos.nl/nosnieuwsalgemeen (`lib/news.ts`). De demo-artikelen blijven als terugval. De client stuurt de ids van de verhalen mee, geen artikeltekst, zodat de server de inhoud bepaalt en een gesprek bij dezelfde verhalen blijft. Geen scraping van volledige artikelen.
+
+Gewijzigd op 15 sept 2026: doelgroep uitgebreid naar jongeren én laaggeletterden. Nova schrijft op A2/B1-niveau: korte actieve zinnen, één idee per zin, moeilijke woorden en instanties direct uitgelegd, opening maximaal 3 berichten van elk 2 zinnen, elk antwoord eindigt met één eenvoudige vraag. Namen en instanties uitleggen mag uit algemene kennis; nieuwsfeiten blijven alleen uit de berichten.
 
 ## Codeconventies
 
 - Lean. Geen abstracties die nog niks abstraheren, geen defensieve wrappers, geen helperlaag voor iets dat één keer voorkomt.
-- State staat in `app/page.tsx`. Pas opsplitsen in componenten als dat bestand echt onleesbaar wordt, niet uit principe.
+- State staat in `app/page.tsx`. Pas opsplitsen in componenten als dat bestand echt onleesbaar wordt, niet uit principe. Uitzondering: `components/AnchorStage.tsx`, omdat daar de echte avatar (HeyGen LiveAvatar) in komt.
 - Directe property access boven ketens van null-checks; alleen guarden waar iets echt kan ontbreken.
 - CSS in `app/globals.css` met de tokens uit `:root`. Geen extra kleuren of radii introduceren zonder dat er een reden voor is.
 - Code en identifiers in het Engels, teksten in de interface in het Nederlands.
 
 ## Designkeuzes die vastliggen
 
-- Rundown links, studio rechts. Een verhaal kiezen = de uitzending start.
+- De presentator staat centraal, de uitzending start bij het laden. Geen keuzescherm en geen nieuwskaarten: beeld, huidig antwoord, snelle acties, invoer. Gesprek en bronnen in uitklapblokken.
 - Lower third als bronvermelding, niet als voetnoot onder de tekst.
 - Beweging alleen als reactie op een actie, en `prefers-reduced-motion` blijft gerespecteerd.
 - Geen decoratie die niets over de inhoud zegt.
@@ -35,12 +45,11 @@ Fase nu: nieuws- en chatflow werkend. Avatar komt later.
 
 1. Streaming response, zodat het antwoord meteen begint te lopen.
 2. Echte artikelen (RSS of redactie-API), tekst opschonen voordat die in de prompt gaat.
-3. Text-to-speech op Nova's antwoord.
-4. Avatar (Mascotte.AI) die op die audio beweegt. De waveform in het frame markeert die plek.
-5. Gebruikerstest met jongeren: snappen ze dat Nova alleen dit artikel kent, en vragen ze door?
+3. Realtime avatar (HeyGen LiveAvatar) in `components/AnchorStage.tsx`, gevoed met `reply.text`.
+4. Gebruikerstest met jongeren: snappen ze dat Nova alleen deze artikelen kent, en vragen ze door?
 
 ## Niet doen
 
 - Geen extra dependencies zonder reden; nu alleen next, react, react-dom.
 - Geen API-calls uitvoeren namens mij — geef het commando of de payload, ik run het en plak het resultaat terug.
-- Geen echte bronnamen aan de verzonnen demo-artikelen hangen.
+- Geen echte bronnamen aan de verzonnen demo-artikelen hangen. Echte bronnaam (NOS) alleen bij berichten die echt uit de feed komen.
