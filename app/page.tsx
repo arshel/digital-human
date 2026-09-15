@@ -112,12 +112,20 @@ export default function Page() {
             {currentSources.length > 0 && (
               <p className="turn-source">
                 Bron:{' '}
-                {currentSources.map((a, j) => (
-                  <span key={a.id}>
-                    {j > 0 && ', '}
-                    <a href={a.sourceUrl} target="_blank" rel="noreferrer">{a.source}</a>
-                  </span>
-                ))}
+                {/* Elke bronnaam één keer. Bij één artikel een link; bij meerdere staan de links onder "Bronnen". */}
+                {[...new Set(currentSources.map((a) => a.source))].map((name, j) => {
+                  const matching = currentSources.filter((a) => a.source === name);
+                  return (
+                    <span key={name}>
+                      {j > 0 && ', '}
+                      {matching.length === 1 ? (
+                        <a href={matching[0].sourceUrl} target="_blank" rel="noreferrer">{name}</a>
+                      ) : (
+                        name
+                      )}
+                    </span>
+                  );
+                })}
               </p>
             )}
           </>
