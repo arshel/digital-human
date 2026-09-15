@@ -50,7 +50,7 @@ app/globals.css              designtokens en layout
 De app roept alleen `generateNewsResponse()` in `lib/ai.ts` aan. Welk model erachter zit, staat alleen in `lib/gemini.ts`. Voor OpenAI of Claude schrijf je een bestand met dezelfde functie (`generateJson(system, messages)`) en pas je één import in `lib/ai.ts` aan.
 
 - Er is geen npm-pakket voor Gemini nodig: de officiële REST-API wordt met `fetch` aangeroepen.
-- Het model is `gemini-2.5-flash`. Met `GEMINI_MODEL` in `.env.local` kies je een ander model.
+- Het model is `gemini-3.6-flash`. Met `GEMINI_MODEL` in `.env.local` kies je een ander model.
 
 ## Klaar voor een avatar
 

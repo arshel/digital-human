@@ -4,7 +4,7 @@
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
 export async function generateJson(system: string, messages: Message[]): Promise<string> {
   const key = process.env.GEMINI_API_KEY;
