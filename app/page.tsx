@@ -13,7 +13,7 @@ type NewsResponse = {
   live: boolean;
 };
 
-const QUICK_ACTIONS = ['Meer uitleg', 'Waarom is dit belangrijk?', 'Volgende onderwerp', 'Leg het makkelijker uit'];
+const QUICK_ACTIONS = ['Leg het makkelijker uit', 'Wat betekent dit?', 'Waarom is dit belangrijk?', 'Volgende onderwerp'];
 
 function nlDate(iso: string) {
   return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -47,7 +47,9 @@ export default function Page() {
       });
 
       if (!res.ok) {
-        setFailure('Nova kan geen antwoord ophalen. Probeer het opnieuw.');
+        // De server legt bij 400 en 429 uit wat er mis is; anders een algemene melding.
+        const problem = await res.json().catch(() => null);
+        setFailure(problem?.error ?? 'Nova kan geen antwoord ophalen. Probeer het opnieuw.');
         return;
       }
 
