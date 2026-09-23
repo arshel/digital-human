@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@heygen/liveavatar-web-sdk": "^0.0.19",
     "next": "^15.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
