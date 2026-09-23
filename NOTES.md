@@ -47,6 +47,8 @@ Gewijzigd op 22 sept 2026: de systeeminstructie in `lib/ai.ts` is herschreven to
 - Gevoelige onderwerpen rustig en feitelijk, zonder schokkende details of medische, juridische of financiële conclusies.
 - Kan Nova niet bepalen welk onderwerp bedoeld wordt, dan stelt ze één korte verduidelijkende vraag.
 
+Gewijzigd op 23 sept 2026: Nova draait op één model, `gemini-3.1-flash-lite`. Eerder probeerde de app vier modellen op volgorde bij een 429 of 503. Reden voor één model: in een vergelijkende gebruikerstest moeten alle deelnemers dezelfde Nova krijgen, en modellen verschillen hoorbaar in taalniveau en toon. Een wisselend model maakt het verschil tussen "de avatar helpt" en "dit model schrijft eenvoudiger" niet meer uit elkaar te houden. Prijs: bij een 503 of een leeg quotum valt Nova meteen terug op de regels, en dat gebeurt op de gratis laag regelmatig. De ketenlogica in `lib/gemini.ts` blijft staan: zet een komma-gescheiden lijst in `GEMINI_MODELS` en de app probeert ze weer op volgorde.
+
 ## Codeconventies
 
 - Lean. Geen abstracties die nog niks abstraheren, geen defensieve wrappers, geen helperlaag voor iets dat één keer voorkomt.

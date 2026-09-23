@@ -4,9 +4,12 @@
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
-// Elk model heeft een eigen gratis quotum en raakt los van de andere overbelast (503).
-// Daarom proberen we ze op volgorde: lukt het eerste niet, dan het volgende.
-const MODELS = (process.env.GEMINI_MODELS || process.env.GEMINI_MODEL || 'gemini-3.6-flash,gemini-3.8-flash,gemini-3.5-flash,gemini-3.1-flash-lite')
+// Nova draait op Gemini 3.1 Flash Lite: bewust één model, zodat het taalniveau en de
+// toon in een gebruikerstest niet per antwoord verschillen. Prijs is dat een 503 of een
+// leeg quotum meteen de terugval uit lib/fallback.ts betekent.
+// Meerdere modellen op volgorde proberen kan nog wel: zet een komma-gescheiden lijst in
+// GEMINI_MODELS. Dan geldt per model een eigen quotum en een eigen wachttijd na een fout.
+const MODELS = (process.env.GEMINI_MODELS || process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite')
   .split(',')
   .map((m) => m.trim())
   .filter(Boolean);
