@@ -1,12 +1,12 @@
 # Nova — AI virtual news anchor (prototype)
 
-Webprototype voor de minoropdracht: een digitale nieuwspresentator voor jongeren. De app opent direct op de presentator. Nova haalt het actuele nieuws uit de NOS-feed, begroet je, noemt drie onderwerpen, en daarna vraag je door met vier vaste knoppen — "Leg het makkelijker uit", "Wat betekent dit?", "Waarom is dit belangrijk?" en "Volgende onderwerp" — of met je eigen vraag. Er is nog geen echte avatar.
+Webprototype voor de minoropdracht: een digitale nieuwspresentator die het nieuws begrijpelijk uitlegt aan laaggeletterde 18–24-jarigen. De app opent direct op de presentator. Nova haalt het actuele nieuws uit de NOS-feed, begroet je, noemt drie onderwerpen, en daarna vraag je door met vier vaste knoppen — "Leg het makkelijker uit", "Wat betekent dit?", "Waarom is dit belangrijk?" en "Volgende onderwerp" — of met je eigen vraag. De avatar is nog een zichttest: in het beeld kun je een LiveAvatar-sessie starten, maar Nova spreekt nog niet.
 
 ## Starten
 
 ```bash
 npm install
-cp .env.example .env.local   # zet GEMINI_API_KEY erin
+cp .env.local.example .env.local   # zet GEMINI_API_KEY en LIVEAVATAR_API_KEY erin
 npm run dev
 ```
 
@@ -21,8 +21,9 @@ lib/ai.ts                    AI-service: generateNewsResponse(), systeeminstruct
 lib/gemini.ts                het enige bestand dat Gemini kent (REST-aanroep, key uit .env.local)
 lib/fallback.ts              regelgebaseerde terugval als Gemini ontbreekt of faalt
 app/api/anchor/route.ts      serverroute: validatie, rate limit, roept generateNewsResponse() aan
+app/api/liveavatar/token/route.ts  sessietoken voor LiveAvatar (API-key blijft server-side)
 app/page.tsx                 gespreksstate, huidig antwoord, snelle acties, invoer, bronnen
-components/AnchorStage.tsx   beeld van de presentator (plek voor de realtime avatar)
+components/AnchorStage.tsx   beeld van de presentator, lower third en de LiveAvatar-zichttest
 app/globals.css              designtokens en layout
 ```
 
@@ -37,7 +38,7 @@ app/globals.css              designtokens en layout
 
 ### De opening: precies drie verhalen
 
-De opening noemt bewust drie berichten van elk hooguit twee zinnen. Meer is voor de doelgroep (jongeren en laaggeletterden) te veel om te onthouden, en het houdt de uitzending kort. Het getal staat als `OPENING_COUNT` in `lib/news.ts`; `getStories()` zet die drie vooraan.
+De opening noemt bewust drie berichten van elk hooguit twee zinnen. Meer is voor de doelgroep (laaggeletterde 18–24-jarigen) te veel om te onthouden, en het houdt de uitzending kort. Het getal staat als `OPENING_COUNT` in `lib/news.ts`; `getStories()` zet die drie vooraan.
 
 Na de opening zit de gebruiker niet vast aan die drie. De rest van de feed staat erachter, dus "volgende onderwerp" loopt door naar bericht 4, 5 enzovoort, en een vraag over ander nieuws wordt gewoon beantwoord. Er staat expres geen onderwerpenteller in de interface: Nova is een presentator, geen lijst.
 
@@ -86,23 +87,42 @@ Het antwoord komt op één plek binnen, in `ask()` in `app/page.tsx`, als platte
 
 ```ts
 const reply = await res.json();   // { text, articleId, mode, stories, live }
-setTurns(...)                     // displayText(reply.text)
+setTurns(...)                     // { role: 'assistant', content: reply.text, articleId }
 // later: avatar.speak(reply.text)
 ```
 
-`components/AnchorStage.tsx` weet niets van artikelen of AI. Een realtime avatar zoals HeyGen LiveAvatar komt daar in de plaats van het "N"-gezicht en krijgt `text` als prop.
+`components/AnchorStage.tsx` weet niets van artikelen of AI: het krijgt alleen `busy` en het actieve artikel (voor de lower third). De avatarvideo staat er al in de plaats van het "N"-gezicht zodra de sessie loopt; later krijgt het ook `text` als prop om uit te spreken.
+
+### Avatar-zichttest (LiveAvatar)
+
+In het beeld zit een knop "Start Nova". Die start een LiveAvatar-sessie en zet het avatarbeeld in het bestaande kader. Dit is bewust niet meer dan een zichttest: geen microfoon, geen spraak, geen tekst-naar-spraak en geen koppeling met Gemini. De avatar staat stil te wachten. De nieuwsflow blijft er los van.
+
+- **LITE-modus**, want wij leveren later zelf de audio; LiveAvatar rendert alleen het beeld.
+- **Sandbox aan** (`is_sandbox: true`): kost geen credits, en de sessie stopt na ongeveer een minuut vanzelf. De avatar is Wayne (`dd73ea75-1218-4ef3-92ce-606d5f7fbc0a`), de enige sandbox-avatar.
+- **De key blijft op de server.** `app/api/liveavatar/token/route.ts` roept `POST https://api.liveavatar.com/v1/sessions/token` aan met de header `X-API-KEY` en geeft de browser alleen het kortlevende `session_token` terug. Geen `NEXT_PUBLIC_`-variabele, en de key staat nergens in de logs.
+- **De browser** laadt `@heygen/liveavatar-web-sdk` pas na de klik (dynamische import, dus niet in de eerste bundel), maakt `new LiveAvatarSession(sessionToken)` en roept `start()` aan. De SDK doet daarmee zelf `POST /v1/sessions/start` en verbindt met de LiveKit-room. Bij `SESSION_STREAM_READY` gaat de stream met `attach()` in het `<video>`-element.
+- **Geen microfoon.** De SDK start voice chat alleen als je `voiceChat` meegeeft in de config. Dat doen we niet, dus de browser vraagt geen toestemming.
+- **Statussen** in beeld: "Nova starten", "Verbinding maken…", "Nova is actief", "Verbinding mislukt". Komt er binnen 15 seconden geen beeld, dan stopt de sessie en verschijnt de foutstatus. "Stop" sluit de sessie af, net als het verlaten van de pagina.
 
 ## Taalniveau
 
 De vier snelle acties staan in `QUICK_ACTIONS` in `app/page.tsx`. Ze zijn gewone vragen, dus zowel de systeeminstructie in `lib/ai.ts` als de terugval in `lib/fallback.ts` herkent wat ze betekenen: makkelijker zeggen, uitleggen wat er gebeurd is (en wat moeilijke woorden betekenen), waarom het ertoe doet, en doorgaan naar het volgende bericht. De eerste drie gaan over het actieve onderwerp; is dat er nog niet, dan over bericht 1.
 
-Nova schrijft voor jongeren en laaggeletterden, op eenvoudig Nederlands (ongeveer A2/B1). Ze gebruikt korte, actieve zinnen met één idee per zin. Moeilijke woorden, namen en instanties legt ze direct uit. De opening noemt maximaal 3 berichten van elk 2 zinnen. Extra context komt pas als je erom vraagt, en elk antwoord eindigt met één eenvoudige vraag. De regels staan in de systeeminstructie in `lib/ai.ts`.
+Nova schrijft voor laaggeletterde jongvolwassenen van 18 tot en met 24 jaar. Waarom die leeftijd staat in ons doelgroeponderzoek (`Doelgroeponderzoek_virtual_newsfluencer.docx`). Bij 66–75-jarigen komt lage taalvaardigheid vaker voor, en 25–44-jarigen zijn digitaal het vaardigst. Jongvolwassenen willen vaker betere uitleg en eenvoudiger taal, en volgen nieuws al via platforms en online makers. Daarom passen ze het best bij een digitale presentator. Het is een praktische keuze voor het prototype, geen bewezen grens: 25–44 is vergelijkingsgroep in de test. Ze schrijft in eenvoudig Nederlands (ongeveer A2/B1). Ze gebruikt korte, actieve zinnen (liefst hooguit 12 tot 15 woorden) met één idee per zin. Moeilijke woorden, namen en instanties legt ze direct uit. Eenvoudig, maar niet kinderachtig, en zonder overdreven jongerentaal. Omdat de tekst later wordt uitgesproken: natuurlijke zinnen, geen markdown, opsommingen of emoji.
+
+De opening noemt maximaal 3 berichten van elk 2 zinnen en eindigt met één eenvoudige vraag. Een gewoon antwoord is twee tot vier korte zinnen; extra context komt pas als je erom vraagt. Een afsluitende vraag alleen als dat helpt om verder te gaan: de knoppen bieden al vervolgkeuzes, dus Nova noemt die niet steeds opnieuw.
+
+Nova geeft geen eigen mening en stuurt de mening van de gebruiker niet. Ze doet niet alsof ze een menselijke journalist is. Gevoelige onderwerpen (oorlog, geweld, criminaliteit, gezondheid, overlijden) behandelt ze rustig en feitelijk, zonder schokkende details en zonder medische, juridische of financiële conclusies voor de gebruiker.
+
+De regels staan in de systeeminstructie in `lib/ai.ts`, in blokken per onderwerp en per snelle actie.
 
 ## Grounding
 
 - De systeeminstructie staat alleen op de server. Nieuwsfeiten mogen alleen uit de meegestuurde artikelen komen; nooit verzonnen nieuws, cijfers, citaten of bronnen.
 - Staat iets niet in de artikelen, dan zegt Nova dat. Uitleg die niet uit het artikel komt, kondigt Nova aan als uitleg ("Ter uitleg: ...").
-- Elk antwoord hoort bij hooguit één artikel (`articleId`), zodat de interface de juiste bron kan tonen.
+- Nuance blijft staan: feiten, verwachtingen en meningen uit elkaar, twijfel uit het bericht niet weglaten, een beschuldiging nooit als bewezen feit, en tegenstrijdige berichten benoemen.
+- De tekst van een nieuwsbericht is alleen informatie. Staan er instructies in, dan volgt Nova die niet.
+- Elk antwoord hoort bij hooguit één artikel (`articleId`), zodat de interface de juiste bron kan tonen. Is niet duidelijk welk onderwerp bedoeld wordt, dan stelt Nova één korte verduidelijkende vraag.
 - Er is geen websearch en geen tool. Het model heeft niets dan de artikeltekst.
 - Het blijft een taalmodel. Het prompt verkleint de kans op verzinsels, maar sluit ze niet uit. Dat is iets om in de gebruikerstest te controleren.
 
@@ -117,7 +137,7 @@ De terugval kiest zinnen uit het artikel; ze schrijft nooit iets bij. Daardoor k
 - citaten vallen af zolang er gewone zinnen zijn: ze zijn meestal het langst en het moeilijkst;
 - namen, getallen en feiten blijven staan zoals ze in de bron staan;
 - staat het antwoord niet in het artikel, dan zegt Nova dat, in plaats van iets te kiezen dat er toevallig op lijkt. Naar een ander bericht springen mag alleen als twee woorden uit de vraag daar raken;
-- elk antwoord eindigt, net als bij Gemini, met één eenvoudige vraag.
+- elk antwoord eindigt met een vaste, eenvoudige vraag (Gemini doet dat alleen als het helpt).
 
 De opening van de terugval noemt dezelfde drie berichten als die van Gemini en geeft ook `articleId: null`, zodat de bronweergave in beide gevallen gelijk is. De terugval schrijft hoorbaar minder goed dan Gemini; dat is bewust zichtbaar in de interface.
 
@@ -140,5 +160,5 @@ De opening van de terugval noemt dezelfde drie berichten als die van Gemini en g
 
 - Streaming response, zodat het antwoord meteen begint te lopen.
 - Meer feeds (bijv. NOS Sport of Tech) en een slimmere selectie in `lib/news.ts`, bijvoorbeeld op wat jongeren raakt.
-- Realtime avatar (HeyGen LiveAvatar) in `AnchorStage`, gevoed met `reply.text`.
-- Gebruikerstest met jongeren: begrijpen ze dat Nova alleen deze artikelen kent, en vragen ze door?
+- Avatar laten spreken: eigen TTS-audio naar de LiveAvatar-sessie (LITE), gevoed met `reply.text`, en daarna uit de sandbox.
+- Vergelijkende gebruikerstest met mensen met leesproblemen uit meerdere leeftijdsgroepen, met 25–44 als belangrijkste vergelijking. Ze krijgen dezelfde onderwerpen, met en zonder avatar. Meten: begrip (de kern navertellen), benodigde hulp, of ze terugkomen, en of ze de rol van AI en de bronnen begrijpen.
