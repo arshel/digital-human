@@ -15,7 +15,13 @@ const MODELS = (process.env.GEMINI_MODELS || process.env.GEMINI_MODEL || 'gemini
   .filter(Boolean);
 
 // Alles samen mag niet langer duren dan dit; daarna valt lib/ai.ts terug op de regels.
-const TOTAL_BUDGET_MS = 25000;
+const TOTAL_BUDGET_MS = 30000;
+
+// Per model. Stond op 10 seconden, maar dan kapten we een traag antwoord van Google er zelf
+// uit en telde dat als mislukt, terwijl het model gewoon aan het werk was. Liever één keer
+// langer wachten dan de regelgebaseerde terugval, want die schrijft hoorbaar slechter.
+// Gevolg: bij een trage eerste poging blijft er tijd over voor één ander model, niet meer.
+const MODEL_BUDGET_MS = 20000;
 
 // Model -> tijdstip tot wanneer we het overslaan (na een 429 of 503).
 const coolingDown = new Map<string, number>();
@@ -56,8 +62,8 @@ async function callModel(model: string, key: string, system: string, messages: M
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-    // Kort per model, zodat er binnen het totaalbudget tijd overblijft voor het volgende.
-    signal: AbortSignal.timeout(Math.min(timeoutMs, 10000)),
+    // Begrensd per model, zodat er binnen het totaalbudget tijd overblijft voor het volgende.
+    signal: AbortSignal.timeout(Math.min(timeoutMs, MODEL_BUDGET_MS)),
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: messages.map((m) => ({

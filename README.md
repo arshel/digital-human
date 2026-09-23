@@ -83,6 +83,7 @@ De app roept alleen `generateNewsResponse()` in `lib/ai.ts` aan. Welk model erac
 - Is dat model op (gratis quotum, 429) of overbelast (503), dan probeert de app `gemini-3.6-flash`, `gemini-3.8-flash` en `gemini-3.5-flash`. Elk model heeft een eigen quotum, dus een demo valt niet stil door één vol model. Een model dat faalt gaat even in de wacht: na een 429 minstens een minuut, na een 503 dertig seconden.
 - Voor een gebruikerstest is dat een afweging. Antwoorden van een ander model klinken anders, en dat zie je niet in de interface, want `mode` blijft `ai`. Wil je zeker weten dat alle deelnemers dezelfde Nova kregen, zet dan `GEMINI_MODELS=gemini-3.1-flash-lite` in `.env.local` voor de duur van de test en kijk achteraf in de terminal of er is teruggevallen.
 - Een eigen lijst zet je met `GEMINI_MODELS` (komma-gescheiden, in volgorde van voorkeur). Lukt geen enkel model, dan volgt de regelgebaseerde terugval uit `lib/fallback.ts` en meldt de interface dat.
+- **Wachttijden:** een model krijgt 20 seconden, alle pogingen samen 30. Stond eerder op 10 en 25, maar dan kapte de app een traag antwoord van Google er zelf uit en telde dat als mislukt. Bij een trage eerste poging blijft er tijd over voor één ander model, niet meer. Een gebruiker kan dus in het slechtste geval een halve minuut wachten; dat is bewust, want de regelgebaseerde terugval schrijft hoorbaar slechter. Streaming moet die wachttijd later opvangen.
 
 ## Klaar voor een avatar
 

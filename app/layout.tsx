@@ -19,9 +19,14 @@ export const metadata: Metadata = {
   description: 'Drie verhalen per dag, uitgelegd door een digitale presentator die alleen het artikel voor zich gebruikt.',
 };
 
+// suppressHydrationWarning op <html>: browserextensies (donkere modus, vertalers) zetten
+// daar een eigen style op voordat React hydrateert, en React ziet dat als een verschil met
+// de server. Dempen mag hier, want wij zetten op dit element alleen lang en de twee
+// fontklassen. Het werkt niet door in de elementen eronder, dus echte fouten in de pagina
+// blijven gewoon zichtbaar.
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="nl" className={`${display.variable} ${body.variable}`}>
+    <html lang="nl" className={`${display.variable} ${body.variable}`} suppressHydrationWarning>
       <body>{children}</body>
     </html>
   );
