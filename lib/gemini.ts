@@ -4,12 +4,12 @@
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
-// Nova draait op Gemini 3.1 Flash Lite: bewust één model, zodat het taalniveau en de
-// toon in een gebruikerstest niet per antwoord verschillen. Prijs is dat een 503 of een
-// leeg quotum meteen de terugval uit lib/fallback.ts betekent.
-// Meerdere modellen op volgorde proberen kan nog wel: zet een komma-gescheiden lijst in
-// GEMINI_MODELS. Dan geldt per model een eigen quotum en een eigen wachttijd na een fout.
-const MODELS = (process.env.GEMINI_MODELS || process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite')
+// Nova draait op Gemini 3.1 Flash Lite. Dat model staat vooraan en doet het werk, zodat
+// het taalniveau en de toon in een gebruikerstest niet per antwoord verschillen.
+// De rest staat erachter voor als het eerste op is (429) of overbelast (503): elk model
+// heeft een eigen quotum. Een antwoord van een ander Gemini-model is nog altijd beter dan
+// de regelgebaseerde terugval, maar het is niet de Nova waarop je test.
+const MODELS = (process.env.GEMINI_MODELS || process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite,gemini-3.6-flash,gemini-3.8-flash,gemini-3.5-flash')
   .split(',')
   .map((m) => m.trim())
   .filter(Boolean);

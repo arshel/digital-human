@@ -79,8 +79,10 @@ Daarnaast een rate limit van 20 aanvragen per minuut per IP, met HTTP 429 en een
 De app roept alleen `generateNewsResponse()` in `lib/ai.ts` aan. Welk model erachter zit, staat alleen in `lib/gemini.ts`. Voor OpenAI of Claude schrijf je een bestand met dezelfde functie (`generateJson(system, messages)`) en pas je één import in `lib/ai.ts` aan.
 
 - Er is geen npm-pakket voor Gemini nodig: de officiële REST-API wordt met `fetch` aangeroepen.
-- Het model is `gemini-3.1-flash-lite`, en bewust maar dat ene. Zo verschilt het taalniveau niet per antwoord, wat voor de gebruikerstest belangrijker is dan altijd een antwoord krijgen. Is het model op (gratis quotum, 429) of overbelast (503), dan valt Nova meteen terug op de regels uit `lib/fallback.ts` en meldt de interface dat.
-- Wil je toch meerdere modellen op volgorde proberen, zet dan een komma-gescheiden lijst in `GEMINI_MODELS` in `.env.local`. De code loopt die lijst af en zet een model dat faalt even in de wacht (na een 429 minstens een minuut, na een 503 dertig seconden).
+- Het model is `gemini-3.1-flash-lite`. Dat staat vooraan en doet in normale omstandigheden al het werk, zodat het taalniveau en de toon gelijk blijven.
+- Is dat model op (gratis quotum, 429) of overbelast (503), dan probeert de app `gemini-3.6-flash`, `gemini-3.8-flash` en `gemini-3.5-flash`. Elk model heeft een eigen quotum, dus een demo valt niet stil door één vol model. Een model dat faalt gaat even in de wacht: na een 429 minstens een minuut, na een 503 dertig seconden.
+- Voor een gebruikerstest is dat een afweging. Antwoorden van een ander model klinken anders, en dat zie je niet in de interface, want `mode` blijft `ai`. Wil je zeker weten dat alle deelnemers dezelfde Nova kregen, zet dan `GEMINI_MODELS=gemini-3.1-flash-lite` in `.env.local` voor de duur van de test en kijk achteraf in de terminal of er is teruggevallen.
+- Een eigen lijst zet je met `GEMINI_MODELS` (komma-gescheiden, in volgorde van voorkeur). Lukt geen enkel model, dan volgt de regelgebaseerde terugval uit `lib/fallback.ts` en meldt de interface dat.
 
 ## Klaar voor een avatar
 

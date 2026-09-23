@@ -47,7 +47,7 @@ Gewijzigd op 22 sept 2026: de systeeminstructie in `lib/ai.ts` is herschreven to
 - Gevoelige onderwerpen rustig en feitelijk, zonder schokkende details of medische, juridische of financiële conclusies.
 - Kan Nova niet bepalen welk onderwerp bedoeld wordt, dan stelt ze één korte verduidelijkende vraag.
 
-Gewijzigd op 23 sept 2026: Nova draait op één model, `gemini-3.1-flash-lite`. Eerder probeerde de app vier modellen op volgorde bij een 429 of 503. Reden voor één model: in een vergelijkende gebruikerstest moeten alle deelnemers dezelfde Nova krijgen, en modellen verschillen hoorbaar in taalniveau en toon. Een wisselend model maakt het verschil tussen "de avatar helpt" en "dit model schrijft eenvoudiger" niet meer uit elkaar te houden. Prijs: bij een 503 of een leeg quotum valt Nova meteen terug op de regels, en dat gebeurt op de gratis laag regelmatig. De ketenlogica in `lib/gemini.ts` blijft staan: zet een komma-gescheiden lijst in `GEMINI_MODELS` en de app probeert ze weer op volgorde.
+Gewijzigd op 23 sept 2026: `gemini-3.1-flash-lite` staat vooraan in de modellenlijst en doet het werk; `gemini-3.6-flash`, `gemini-3.8-flash` en `gemini-3.5-flash` staan erachter voor een 429 of 503. Eerder stond 3.6 vooraan. Reden voor lite vooraan: dit is het model waarop we ontwikkelen en testen, dus het moet de standaard zijn en niet het laatste redmiddel. Reden om de andere te laten staan: elk model heeft een eigen gratis quotum, en een demo mag niet stilvallen. Let op bij een gebruikerstest: een antwoord van een ander model klinkt anders, en de interface laat dat niet zien (`mode` blijft `ai`). Wil je de test zuiver houden, zet dan tijdelijk `GEMINI_MODELS=gemini-3.1-flash-lite` en controleer achteraf de terminal.
 
 ## Codeconventies
 
