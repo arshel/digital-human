@@ -1,14 +1,29 @@
+/* Nova: schermvullende presentator met de bediening onderin.
+   Leesbaarheid voor laaggeletterde jongvolwassenen: Verdana (of Helvetica), nergens kleiner
+   dan 16 px (1rem), regelafstand minstens 1,5, tekst links uitgelijnd, zwart op wit. Alle
+   maten in rem, zodat een grotere tekstinstelling in de browser overal doorwerkt. */
+
 :root {
-  --paper: #f2eff7;
-  --ink: #1b1633;
-  --slate: #6b6480;
-  --signal: #2b4fff;
-  --live: #ff3b5c;
-  --line: #dcd6e8;
+  --ink: #000;
+  --paper: #fff;
+  --muted: #444; /* alleen de ondertitel naast de naam; 9,7:1 op wit */
+  --pill: #ececec;
+  --divider: #dedede;
+  --border: #4d4d4d; /* randen van knoppen en velden: 8:1 op wit */
+  --accent: #102a5c; /* donkerblauw: de belangrijkste actie */
+  --accent-hover: #0a1d42;
+  --stage: #9e978f; /* rustige, warme achtergrond achter de presentator */
+  --focus: #102a5c;
+  --shadow: 0 0.125rem 0.75rem rgba(0, 0, 0, 0.25);
 }
 
 * {
   box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 html,
@@ -20,461 +35,682 @@ body {
 body {
   background: var(--paper);
   color: var(--ink);
-  font-family: var(--font-body), system-ui, sans-serif;
-  font-size: 16px;
+  font-family: Verdana, Helvetica, Arial, sans-serif;
+  font-size: 1rem;
   line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
+  text-align: left;
+}
+
+h1,
+h2,
+h3,
+p,
+ul {
+  margin: 0;
+}
+
+ul {
+  padding: 0;
+  list-style: none;
 }
 
 button,
 input {
   font: inherit;
   color: inherit;
+  line-height: 1.5;
 }
 
+/* Twee ringen (wit en donkerblauw): zichtbaar op wit, op knoppen én op het videobeeld. */
 :focus-visible {
-  outline: 2px solid var(--signal);
-  outline-offset: 3px;
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--paper);
 }
 
-/* ---------- shell ---------- */
-
-.shell {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  min-height: 100vh;
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 24px 24px 32px;
-}
-
-@media (max-width: 860px) {
-  .shell {
-    padding: 16px 16px 24px;
-  }
-}
-
-@media (max-width: 560px) {
-  .face {
-    top: 28px;
-    width: 88px;
-    height: 88px;
-    font-size: 36px;
-  }
-  .talking {
-    top: 128px;
-  }
-}
-
-/* ---------- header ---------- */
-
-.intro {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.brand {
-  font-family: var(--font-display), sans-serif;
-  font-weight: 800;
-  font-size: 30px;
-  letter-spacing: -0.03em;
-  line-height: 1;
-  margin: 0;
-}
-
-.now {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--slate);
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--live);
-}
-
-/* ---------- anchor frame ---------- */
-
-.frame {
-  position: relative;
-  background: var(--ink);
-  border-radius: 6px;
-  aspect-ratio: 16 / 9;
-  max-width: 100%;
-  min-height: 260px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
+html:has(dialog[open]) {
   overflow: hidden;
 }
 
-.frame::before {
-  content: '';
+.sr-only {
   position: absolute;
-  inset: 0;
-  background: radial-gradient(120% 90% at 78% 8%, rgba(43, 79, 255, 0.5), transparent 62%);
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.face {
-  position: absolute;
-  top: 22%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 132px;
-  height: 132px;
-  border-radius: 50%;
+/* ---------- knoppen ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 0.5rem 1rem;
+  border: 2px solid var(--border);
+  border-radius: 0.5rem;
   background: var(--paper);
   color: var(--ink);
-  font-family: var(--font-display), sans-serif;
-  font-weight: 800;
-  font-size: 54px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.btn svg,
+.source-link svg,
+.link svg {
+  flex: none;
+  width: 1.5em;
+  height: 1.5em;
+}
+
+@media (hover: hover) {
+  .btn:hover:not([aria-disabled='true']) {
+    background: #f0f0f0;
+  }
+
+  .btn-primary:hover:not([aria-disabled='true']) {
+    border-color: var(--accent-hover);
+    background: var(--accent-hover);
+  }
+
+  .btn-pill:hover:not([aria-disabled='true']) {
+    background: #dcdcdc;
+  }
+}
+
+.btn-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--paper);
+}
+
+.btn-pill {
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--pill);
+  font-size: 1.0625rem;
+}
+
+.btn-quiet {
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- pagina ---------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.header {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  min-height: 4.25rem;
+  padding: max(0.5rem, env(safe-area-inset-top)) max(2.25rem, env(safe-area-inset-right)) 0.5rem
+    max(2.25rem, env(safe-area-inset-left));
+  background: #fafafa;
+  border-bottom: 1px solid var(--divider);
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 1.5rem;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.brand-name {
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.brand-tagline {
+  color: var(--muted);
+  font-size: 1.125rem;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+/* ---------- presentator ---------- */
+
+/* Het vlak vult de rest van het scherm. Minstens zo hoog dat tekst, knoppen en een stuk beeld
+   passen (--overlays wordt gemeten); past dat niet, dan scrolt de pagina. */
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: calc(var(--overlays, 0px) + 8rem);
+  overflow: hidden;
+  background: var(--stage);
+}
+
+.presenter {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Eén stilstaand, vervaagd beeld van de achtergrond van de avatar, voor de randen naast de
+   video. Geen bewegende achtergrond. */
+.presenter-backdrop {
+  position: absolute;
+  inset: -3rem;
+  background: center / 100% 100% no-repeat;
+  filter: blur(1.5rem);
+  opacity: 0;
+}
+
+.presenter.has-backdrop .presenter-backdrop {
+  opacity: 1;
+}
+
+/* Positie en maat rekent AnchorStage uit; contain houdt de verhouding altijd heel. */
+.presenter-video {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Zachte randen, zodat de video zonder harde naad in de achtergrond overloopt. */
+.presenter.has-backdrop .presenter-video {
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 4%, #000 96%, transparent),
+    linear-gradient(to bottom, transparent, #000 4%, #000 96%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent, #000 4%, #000 96%, transparent),
+    linear-gradient(to bottom, transparent, #000 4%, #000 96%, transparent);
+  mask-composite: intersect;
+}
+
+.presenter-placeholder {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  width: 8rem;
+  height: 8rem;
+  transform: translate(-50%, -50%);
   display: grid;
   place-items: center;
+  border-radius: 50%;
+  background: #3b3631;
+  color: var(--paper);
+  font-size: 3.5rem;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
-.talking {
+.presenter-problem {
   position: absolute;
-  top: calc(22% + 148px);
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 4px;
-  align-items: flex-end;
-  height: 18px;
-}
-
-.talking span {
-  width: 4px;
-  height: 6px;
+  top: 1rem;
+  right: 1rem;
+  max-width: 24rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
   background: var(--paper);
-  animation: pulse 900ms ease-in-out infinite;
+  color: #a3221a;
 }
 
-.talking span:nth-child(2) {
-  animation-delay: 150ms;
+/* ---------- onderwerp linksboven ---------- */
+
+.topic {
+  position: absolute;
+  z-index: 2;
+  top: 2.25rem;
+  left: max(3.5rem, env(safe-area-inset-left));
+  max-width: min(30rem, calc(100% - 7rem));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
 }
-.talking span:nth-child(3) {
-  animation-delay: 300ms;
+
+.badge,
+.topic-title,
+.topic-note {
+  padding: 0.25rem 0.875rem;
+  border-radius: 0.5rem;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow);
 }
-.talking span:nth-child(4) {
-  animation-delay: 450ms;
+
+.topic-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  padding-block: 0.375rem;
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+/* ---------- melding over het beeld (avatar start of werkt niet) ---------- */
+
+.stage-status {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  transform: translate(-50%, calc(-100% - 0.75rem));
+  width: min(calc(100% - 2rem), 28rem);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding: 1rem 1.25rem;
+  border-radius: 0.75rem;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.stage-status .btn {
+  margin-top: 0.5rem;
+}
+
+/* ---------- ondertiteling en bediening onderin ---------- */
+
+.dock {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 max(1rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  pointer-events: none;
+}
+
+.dock > * {
+  pointer-events: auto;
+}
+
+/* Wit, dekkend vlak met zwarte tekst. Ruimte voor twee regels en de knoppen eronder blijft
+   altijd vrij, zodat het beeld niet verspringt als een antwoord korter of langer is. */
+.subtitles {
+  width: min(100%, 44rem);
+  min-height: calc(2 * 1.5rem * 1.5 + 2.75rem + 0.5rem + 1.75rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1.25rem;
+  border-radius: 0.625rem;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.subtitles-text {
+  font-size: 1.5rem;
+}
+
+.subtitles-text:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.subtitles-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.subtitles-nav .btn {
+  min-height: 2.75rem;
+  padding: 0.25rem 0.875rem;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.pulse {
+  flex: none;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.6s ease-in-out infinite;
 }
 
 @keyframes pulse {
-  0%,
-  100% {
-    height: 5px;
-  }
   50% {
-    height: 18px;
+    opacity: 0.3;
   }
 }
 
-/* ---------- avatar (LiveAvatar-zichttest) ---------- */
-
-.avatar-video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.controls {
+  width: min(100%, 44rem);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
 }
 
-.avatar-controls {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
+/* Zoals in het ontwerp: pictogram boven het label, groot genoeg voor een duim. */
+.control {
+  flex-direction: column;
   align-items: center;
-}
-
-.avatar-state {
-  background: rgba(27, 22, 51, 0.72);
-  color: var(--paper);
-  padding: 6px 10px;
-  font-size: 13px;
-}
-
-.avatar-controls button {
-  background: var(--paper);
-  color: var(--ink);
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 5.5rem;
+  padding: 0.75rem 1rem;
   border: 0;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
+  border-radius: 0.625rem;
+  font-size: 1.125rem;
+  text-align: center;
+  box-shadow: var(--shadow);
 }
 
-.avatar-controls button:disabled {
-  opacity: 0.6;
-  cursor: default;
+.control svg {
+  width: 1.6em;
+  height: 1.6em;
 }
 
-.avatar-problem {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  top: 52px;
-  margin: 0;
-  background: rgba(27, 22, 51, 0.82);
-  color: var(--live);
-  padding: 8px 10px;
-  font-size: 13px;
+.control-start {
+  grid-column: 1 / -1;
+  justify-self: center;
+  flex-direction: row;
+  gap: 0.75rem;
+  min-width: min(100%, 18rem);
+  padding-inline: 2rem;
+  font-size: 1.25rem;
 }
 
-.lower-third {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  margin: 0 0 18px;
-  animation: slide-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.lt-name {
+.source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.25rem 1rem;
+  border: 0;
+  border-radius: 999px;
   background: var(--paper);
   color: var(--ink);
-  padding: 8px 14px;
   font-weight: 700;
-  font-size: 14px;
-}
-
-.lt-source {
-  background: var(--signal);
-  color: #fff;
-  padding: 8px 14px;
-  font-size: 14px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.lt-source a {
-  color: #fff;
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+  box-shadow: var(--shadow);
 }
 
-.frame-empty {
-  position: relative;
-  color: var(--paper);
-  padding: 0 24px 24px;
-  max-width: 30ch;
-  font-size: 17px;
+/* ---------- panelen ---------- */
+
+.panel {
+  width: min(calc(100% - 2rem), 36rem);
+  max-width: none;
+  max-height: min(calc(100dvh - 2rem), 46rem);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0.75rem;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.35);
 }
 
-@keyframes slide-in {
-  from {
-    transform: translateX(-14px);
-    opacity: 0;
+.panel::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+/* Compact paneel onderin, over de bediening heen: zo laag mogelijk, zodat het gezicht van
+   de presentator zichtbaar blijft. */
+.panel-compact {
+  width: min(calc(100% - 2rem), 44rem);
+  margin-bottom: max(1.5rem, env(safe-area-inset-bottom));
+}
+
+.panel-compact .options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+
+.panel-compact::backdrop {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: inherit;
+  padding: 1.25rem 1.5rem 1.5rem;
+  overflow-y: auto;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.panel-head h2 {
+  font-size: 1.5rem;
+}
+
+.options,
+.stories {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.option,
+.story {
+  width: 100%;
+  min-height: 3.5rem;
+}
+
+.story {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  font-weight: 400;
+}
+
+.story strong {
+  font-weight: 700;
+}
+
+.story[aria-current='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.ask-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ask-form label {
+  font-weight: 700;
+}
+
+.ask-form input {
+  width: 100%;
+  min-height: 3.25rem;
+  padding: 0.5rem 0.875rem;
+  border: 2px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--paper);
+  font-size: 1.125rem;
+}
+
+.ask-form .btn {
+  align-self: flex-start;
+  margin-top: 0.5rem;
+}
+
+.sources {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-block: 0.25rem 0.5rem;
+}
+
+.sources li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--divider);
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 2.75rem;
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.help {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.help h3 {
+  margin-bottom: 0.25rem;
+  font-size: 1.125rem;
+}
+
+/* ---------- telefoon ---------- */
+
+@media (max-width: 40rem) {
+  .header {
+    padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
   }
-  to {
-    transform: none;
-    opacity: 1;
+
+  .brand-name {
+    font-size: 1.625rem;
+  }
+
+  .brand-tagline {
+    display: none;
+  }
+
+  .header-actions {
+    gap: 0.5rem;
+  }
+
+  .btn-pill {
+    padding: 0 0.875rem;
+    font-size: 1rem;
+  }
+
+  .topic {
+    top: 0.75rem;
+    left: max(0.75rem, env(safe-area-inset-left));
+    right: max(0.75rem, env(safe-area-inset-right));
+    max-width: none;
+  }
+
+  .topic-title {
+    font-size: 1.125rem;
+  }
+
+  .dock {
+    gap: 0.5rem;
+    padding: 0 max(0.5rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom))
+      max(0.5rem, env(safe-area-inset-left));
+  }
+
+  .subtitles {
+    min-height: calc(2 * 1.25rem * 1.5 + 2.75rem + 0.5rem + 1.5rem);
+    padding: 0.75rem 1rem;
+  }
+
+  .subtitles-text {
+    font-size: 1.25rem;
+  }
+
+  .subtitles-nav {
+    gap: 0.5rem;
+  }
+
+  .subtitles-nav .btn {
+    padding-inline: 0.625rem;
+  }
+
+  .controls {
+    gap: 0.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.75rem), 1fr));
+  }
+
+  .control {
+    min-height: 5rem;
+    padding: 0.5rem;
+    font-size: 1rem;
+  }
+
+  .panel,
+  .panel-compact {
+    width: 100%;
+    max-height: calc(100dvh - var(--keyboard, 0px) - 1rem);
+    margin: auto 0 var(--keyboard, 0px);
+    border-radius: 1rem 1rem 0 0;
+  }
+
+  .panel-body {
+    padding: 1rem 1rem max(1.25rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* Lage telefoon: het onderwerp op één regel, zodat de presentator groot genoeg blijft. */
+@media (max-width: 40rem) and (max-height: 42rem) {
+  .topic-title {
+    -webkit-line-clamp: 1;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lower-third,
-  .talking span {
+  .pulse {
     animation: none;
   }
-}
-
-/* ---------- current message ---------- */
-
-.current {
-  min-height: 96px;
-}
-
-.current-text {
-  margin: 0;
-  font-size: 20px;
-  line-height: 1.45;
-  max-width: 62ch;
-}
-
-/* ---------- drawers: gesprek en bronnen ---------- */
-
-.drawer {
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
-}
-
-.drawer summary {
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--slate);
-}
-
-.drawer summary:hover {
-  color: var(--signal);
-}
-
-.sources {
-  margin: 14px 0 0;
-  padding-left: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.sources li[aria-current='true'] .source-title {
-  color: var(--signal);
-}
-
-.source-title {
-  display: block;
-  font-weight: 500;
-}
-
-.source-meta {
-  display: block;
-  font-size: 13px;
-  color: var(--slate);
-}
-
-.source-meta a {
-  color: var(--signal);
-  text-underline-offset: 2px;
-}
-
-.sources details {
-  margin-top: 6px;
-}
-
-.sources details summary {
-  font-size: 13px;
-}
-
-.sources details p {
-  max-width: 62ch;
-  margin: 10px 0 0;
-  font-size: 15px;
-}
-
-/* ---------- transcript ---------- */
-
-.transcript {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 14px 0 4px;
-}
-
-.turn-anchor {
-  border-left: 2px solid var(--signal);
-  padding-left: 14px;
-  max-width: 62ch;
-  font-size: 17px;
-}
-
-.turn-source {
-  display: block;
-  margin: 8px 0 0;
-  font-size: 13px;
-  color: var(--slate);
-}
-
-.turn-source a {
-  color: var(--signal);
-  text-underline-offset: 2px;
-}
-
-.turn-you {
-  align-self: flex-end;
-  background: rgba(43, 79, 255, 0.09);
-  border-radius: 14px 14px 2px 14px;
-  padding: 10px 14px;
-  max-width: 46ch;
-}
-
-.thinking {
-  color: var(--slate);
-  font-size: 15px;
-}
-
-.failure {
-  border-left: 2px solid var(--live);
-  padding-left: 14px;
-  max-width: 54ch;
-  color: var(--ink);
-}
-
-/* ---------- composer ---------- */
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chip {
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 7px 14px;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.chip:hover {
-  border-color: var(--signal);
-  color: var(--signal);
-}
-
-.composer {
-  display: flex;
-  gap: 10px;
-}
-
-.composer input {
-  flex: 1;
-  min-width: 0;
-  background: none;
-  border: none;
-  border-bottom: 2px solid var(--line);
-  padding: 10px 2px;
-}
-
-.composer input::placeholder {
-  color: var(--slate);
-}
-
-.composer input:focus {
-  border-bottom-color: var(--signal);
-  outline: none;
-}
-
-.composer button {
-  background: var(--ink);
-  color: var(--paper);
-  border: none;
-  border-radius: 999px;
-  padding: 10px 20px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.composer button:disabled {
-  background: var(--line);
-  color: var(--slate);
-  cursor: default;
-}
-
-.grounding {
-  margin: 0;
-  font-size: 13px;
-  color: var(--slate);
 }

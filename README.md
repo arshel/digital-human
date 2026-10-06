@@ -1,6 +1,6 @@
 # Nova — AI virtual news anchor (prototype)
 
-Webprototype voor de minoropdracht: een digitale nieuwspresentator die het nieuws begrijpelijk uitlegt aan laaggeletterde 18–24-jarigen. De app opent direct op de presentator. Nova haalt het actuele nieuws uit de NOS-feed, begroet je, noemt drie onderwerpen, en daarna vraag je door met vier vaste knoppen — "Leg het makkelijker uit", "Wat betekent dit?", "Waarom is dit belangrijk?" en "Volgende onderwerp" — of met je eigen vraag. De avatar is nog een zichttest: in het beeld kun je een LiveAvatar-sessie starten, maar Nova spreekt nog niet.
+Webprototype voor de minoropdracht: een digitale nieuwspresentator die het nieuws begrijpelijk uitlegt aan laaggeletterde 18–24-jarigen. De app opent op de presentator en begint pas als je op "Start nieuws" drukt. Dan haalt Nova het actuele nieuws uit de NOS-feed, begroet je en noemt drie onderwerpen. Daarna kies je "Volgende onderwerp", vraag je via "Extra uitleg" om "Leg het makkelijker uit", "Wat betekent dit?", "Waarom is dit belangrijk?" of "Opnieuw uitleggen", typ je zelf een vraag ("Stel een vraag"), of kies je een onderwerp uit "Ander nieuws". Je leest mee in de ondertiteling over het beeld. De avatar (LiveAvatar) toont beeld, maar Nova spreekt nog niet.
 
 ## Starten
 
@@ -22,18 +22,21 @@ lib/gemini.ts                het enige bestand dat Gemini kent (REST-aanroep, ke
 lib/fallback.ts              regelgebaseerde terugval als Gemini ontbreekt of faalt
 app/api/anchor/route.ts      serverroute: validatie, rate limit, roept generateNewsResponse() aan
 app/api/liveavatar/token/route.ts  sessietoken voor LiveAvatar (API-key blijft server-side)
-app/page.tsx                 gespreksstate, huidig antwoord, snelle acties, invoer, bronnen
-components/AnchorStage.tsx   beeld van de presentator, lower third en de LiveAvatar-zichttest
+app/page.tsx                 gespreksstate, ondertiteling, bediening, panelen en bronnen
+components/AnchorStage.tsx   beeld van de presentator (LiveAvatar), past de video in zonder het gezicht te bedekken
+components/Panel.tsx         paneel als <dialog>: focus erin, Escape sluit, focus terug; op de telefoon een blad onderin
+components/useReadAlong.ts   meelezen: antwoord in stukjes van hooguit twee regels, elke zin op een eigen regel
+components/icons.tsx         pictogrammen (altijd naast tekst)
 app/globals.css              designtokens en layout
 ```
 
 ## De flow
 
-1. De pagina laadt en vraagt `/api/anchor` om een opening, met een lege gespreksgeschiedenis.
+1. De gebruiker drukt op "Start nieuws". Pas dan vraagt de pagina `/api/anchor` om een opening (met een lege gespreksgeschiedenis) en start de avatarsessie. Bij het laden van de pagina gebeurt nog niets.
 2. De route valideert de aanvraag (zie "Grenzen aan de API") en haalt de verhalen op via `getStories()` in `lib/news.ts`.
 3. De server geeft Gemini de systeeminstructie, een begrensde selectie artikelen (genummerd, met id, bron, datum en tekst) en het actieve onderwerp.
 4. Gemini antwoordt in JSON: `{ text, articleId }`. `lib/ai.ts` controleert dat `articleId` echt een van de geladen artikelen is en voegt `mode` toe (`ai` of `fallback`).
-5. De server stuurt ook de verhalen mee terug. De pagina toont `text` onder het beeld, zet het actieve artikel en laat de bron zien.
+5. De server stuurt ook de verhalen mee terug. De pagina toont `text` als ondertiteling over het beeld, zet het actieve artikel en laat de bron zien. Is `live` false (demo-artikelen), dan toont de pagina die niet; zie "Bronnen in beeld".
 6. Bij elke vraag stuurt de pagina de geschiedenis, het actieve `articleId` en de ids van de verhalen mee — nooit artikeltekst. Zo snapt Gemini "die eerste", "dit" en "volgende onderwerp", en blijft het gesprek bij dezelfde verhalen in dezelfde volgorde, ook als de feed intussen ververst.
 
 ### De opening: precies drie verhalen
@@ -42,7 +45,7 @@ De opening noemt bewust drie berichten van elk hooguit twee zinnen. Meer is voor
 
 Na de opening zit de gebruiker niet vast aan die drie. De rest van de feed staat erachter, dus "volgende onderwerp" loopt door naar bericht 4, 5 enzovoort, en een vraag over ander nieuws wordt gewoon beantwoord. Er staat expres geen onderwerpenteller in de interface: Nova is een presentator, geen lijst.
 
-De opening hoort bij geen enkel artikel, dus `articleId` is dan `null` — ook in de terugval. De interface toont daardoor de drie bronnen van de opening, en de lower third blijft algemeen ("Het nieuws van vandaag"). Elk volgend antwoord hoort bij één artikel en toont alleen die bron.
+De opening hoort bij geen enkel artikel, dus `articleId` is dan `null` — ook in de terugval. De interface toont daardoor de drie bronnen van de opening, en bovenin staat "Het nieuws van vandaag". Elk volgend antwoord hoort bij één artikel en toont alleen die bron.
 
 ## Nieuws uit de NOS-feed
 
@@ -95,26 +98,28 @@ setTurns(...)                     // { role: 'assistant', content: reply.text, a
 // later: avatar.speak(reply.text)
 ```
 
-`components/AnchorStage.tsx` weet niets van artikelen of AI: het krijgt alleen `busy` en het actieve artikel (voor de lower third). De avatarvideo staat er al in de plaats van het "N"-gezicht zodra de sessie loopt; later krijgt het ook `text` als prop om uit te spreken.
+`components/AnchorStage.tsx` weet niets van artikelen of AI: het krijgt alleen een startverzoek (`startRequest`) en de plekken waar tekst en knoppen over het beeld liggen (`keepClear`), en meldt zijn status terug. De avatarvideo staat er in de plaats van het "N"-gezicht zodra de sessie loopt; later krijgt het ook `text` om uit te spreken.
 
 ### Avatar-zichttest (LiveAvatar)
 
-In het beeld zit een knop "Start Nova". Die start een LiveAvatar-sessie en zet het avatarbeeld in het bestaande kader. Dit is bewust niet meer dan een zichttest: geen microfoon, geen spraak, geen tekst-naar-spraak en geen koppeling met Gemini. De avatar staat stil te wachten. De nieuwsflow blijft er los van.
+"Start nieuws" start ook een LiveAvatar-sessie en zet het avatarbeeld schermvullend in beeld, nooit vanzelf bij het laden. Dit is nog steeds een zichttest: geen microfoon, geen spraak, geen tekst-naar-spraak en geen koppeling met Gemini. De avatar staat stil te wachten. De nieuwsflow blijft er los van.
 
 - **LITE-modus**, want wij leveren later zelf de audio; LiveAvatar rendert alleen het beeld.
 - **Sandbox aan** (`is_sandbox: true`): kost geen credits, en de sessie stopt na ongeveer een minuut vanzelf. De avatar is Wayne (`dd73ea75-1218-4ef3-92ce-606d5f7fbc0a`), de enige sandbox-avatar.
 - **De key blijft op de server.** `app/api/liveavatar/token/route.ts` roept `POST https://api.liveavatar.com/v1/sessions/token` aan met de header `X-API-KEY` en geeft de browser alleen het kortlevende `session_token` terug. Geen `NEXT_PUBLIC_`-variabele, en de key staat nergens in de logs.
 - **De browser** laadt `@heygen/liveavatar-web-sdk` pas na de klik (dynamische import, dus niet in de eerste bundel), maakt `new LiveAvatarSession(sessionToken)` en roept `start()` aan. De SDK doet daarmee zelf `POST /v1/sessions/start` en verbindt met de LiveKit-room. Bij `SESSION_STREAM_READY` gaat de stream met `attach()` in het `<video>`-element.
 - **Geen microfoon.** De SDK start voice chat alleen als je `voiceChat` meegeeft in de config. Dat doen we niet, dus de browser vraagt geen toestemming.
-- **Statussen** in beeld: "Nova starten", "Verbinding maken…", "Nova is actief", "Verbinding mislukt". Komt er binnen 15 seconden geen beeld, dan stopt de sessie en verschijnt de foutstatus. "Stop" sluit de sessie af, net als het verlaten van de pagina.
+- **Statussen** in beeld: "Het beeld van de presentator start…", "De presentator werkt nu niet" (met "Probeer het opnieuw") en "Het beeld is gestopt" (de sandbox stopt na een minuut; met "Start het beeld opnieuw"). Een nieuwe sessie start alleen na zo'n klik. Komt er binnen 15 seconden geen beeld, dan stopt de sessie en verschijnt de foutmelding. Het verlaten van de pagina sluit de sessie af.
+- **Wat de SDK kan** (gecontroleerd in `@heygen/liveavatar-web-sdk` 0.0.19): `repeat(tekst)` laat de avatar tekst uitspreken, maar alleen in FULL-modus; in LITE-modus spreekt de avatar alleen audio die je zelf aanlevert (`repeatAudio`, PCM 24 kHz). Pauzeren en hervatten bestaan niet, alleen `interrupt()` (stoppen). Events voor ondertiteling: `AVATAR_SPEAK_STARTED`/`ENDED` en `AVATAR_TRANSCRIPTION`. Daarom heeft de interface nu geen pauzeknop en geen microfoonknop: er is nog geen geluid om te pauzeren.
+- **Beeld zonder bedekt gezicht.** De video houdt altijd zijn eigen verhouding (16:9, niet uitgerekt). `AnchorStage` rekent uit hoe groot hij mag, zodat het onderwerp bovenin en de ondertiteling en knoppen onderin buiten het gezicht blijven. Het gezicht van Wayne is gemeten op de echte stream (haar vanaf ~10%, kin tot ~62% van de beeldhoogte); een andere avatar moet je opnieuw meten (`FACE` in `AnchorStage.tsx`). Naast de video staat één stilstaand, vervaagd beeld van de randen van het decor, zodat het beeld zonder naad doorloopt.
 
 ## Taalniveau
 
-De vier snelle acties staan in `QUICK_ACTIONS` in `app/page.tsx`. Ze zijn gewone vragen, dus zowel de systeeminstructie in `lib/ai.ts` als de terugval in `lib/fallback.ts` herkent wat ze betekenen: makkelijker zeggen, uitleggen wat er gebeurd is (en wat moeilijke woorden betekenen), waarom het ertoe doet, en doorgaan naar het volgende bericht. De eerste drie gaan over het actieve onderwerp; is dat er nog niet, dan over bericht 1.
+De vier vervolgvragen onder "Extra uitleg" staan in `EXPLAIN` in `app/page.tsx`; "Volgende onderwerp" is een vaste knop. Het zijn gewone vragen, dus zowel de systeeminstructie in `lib/ai.ts` als de terugval in `lib/fallback.ts` herkent wat ze betekenen: makkelijker zeggen, uitleggen wat er gebeurd is (en wat moeilijke woorden betekenen), waarom het ertoe doet, het nog eens anders uitleggen, en doorgaan naar het volgende bericht. Ze gaan over het actieve onderwerp; is dat er nog niet, dan over bericht 1. Een keuze uit "Ander nieuws" stuurt "Vertel over onderwerp N." met dat artikel als actief, zodat de volledige tekst erbij zit.
 
-Nova schrijft voor laaggeletterde jongvolwassenen van 18 tot en met 24 jaar. Waarom die leeftijd staat in ons doelgroeponderzoek (`Doelgroeponderzoek_virtual_newsfluencer.docx`). Bij 66–75-jarigen komt lage taalvaardigheid vaker voor, en 25–44-jarigen zijn digitaal het vaardigst. Jongvolwassenen willen vaker betere uitleg en eenvoudiger taal, en volgen nieuws al via platforms en online makers. Daarom passen ze het best bij een digitale presentator. Het is een praktische keuze voor het prototype, geen bewezen grens: 25–44 is vergelijkingsgroep in de test. Ze schrijft in eenvoudig Nederlands (ongeveer A2/B1). Ze gebruikt korte, actieve zinnen (liefst hooguit 12 tot 15 woorden) met één idee per zin. Moeilijke woorden, namen en instanties legt ze direct uit. Eenvoudig, maar niet kinderachtig, en zonder overdreven jongerentaal. Omdat de tekst later wordt uitgesproken: natuurlijke zinnen, geen markdown, opsommingen of emoji.
+Nova schrijft voor laaggeletterde jongvolwassenen van 18 tot en met 24 jaar. Waarom die leeftijd staat in ons doelgroeponderzoek (`Doelgroeponderzoek_virtual_newsfluencer.docx`). Bij 66–75-jarigen komt lage taalvaardigheid vaker voor, en 25–44-jarigen zijn digitaal het vaardigst. Jongvolwassenen willen vaker betere uitleg en eenvoudiger taal, en volgen nieuws al via platforms en online makers. Daarom passen ze het best bij een digitale presentator. Het is een praktische keuze voor het prototype, geen bewezen grens: 25–44 is vergelijkingsgroep in de test. Ze schrijft in eenvoudig Nederlands, met A2 als uitgangspunt: B1 is voor veel gebruikers nog te moeilijk. Ze gebruikt korte, actieve zinnen (streven: hooguit 10 woorden, wel natuurlijke spreektaal) met één idee per zin. Ze gebruikt steeds hetzelfde woord voor hetzelfde begrip, vermijdt spreekwoorden en beeldspraak, en vermijdt afkortingen (of legt ze direct uit). Moeilijke woorden, namen en instanties legt ze direct uit. Eenvoudig, maar niet kinderachtig, en zonder overdreven jongerentaal. Omdat de tekst later wordt uitgesproken: natuurlijke zinnen, geen markdown, opsommingen of emoji.
 
-De opening noemt maximaal 3 berichten van elk 2 zinnen en eindigt met één eenvoudige vraag. Een gewoon antwoord is twee tot vier korte zinnen; extra context komt pas als je erom vraagt. Een afsluitende vraag alleen als dat helpt om verder te gaan: de knoppen bieden al vervolgkeuzes, dus Nova noemt die niet steeds opnieuw.
+De opening noemt maximaal 3 berichten van elk 2 zinnen en eindigt met één eenvoudige vraag. Een gewoon antwoord is twee tot vier korte zinnen: eerst de belangrijkste boodschap, dan direct de achtergrond die nodig is om die te begrijpen. Verdieping komt pas als je erom vraagt. Een afsluitende vraag alleen als dat helpt om verder te gaan: de knoppen bieden al vervolgkeuzes, dus Nova noemt die niet steeds opnieuw.
 
 Nova geeft geen eigen mening en stuurt de mening van de gebruiker niet. Ze doet niet alsof ze een menselijke journalist is. Gevoelige onderwerpen (oorlog, geweld, criminaliteit, gezondheid, overlijden) behandelt ze rustig en feitelijk, zonder schokkende details en zonder medische, juridische of financiële conclusies voor de gebruiker.
 
@@ -132,9 +137,9 @@ De regels staan in de systeeminstructie in `lib/ai.ts`, in blokken per onderwerp
 
 ## Terugval zonder Gemini
 
-Ontbreekt de key, is Gemini niet bereikbaar (quotum, netwerk, time-out) of komt er geen bruikbare JSON terug, dan gebruikt `lib/ai.ts` de regelgebaseerde versie uit `lib/fallback.ts`. De interface meldt dat onderaan, en de echte fout staat in de terminal waar `npm run dev` draait (`[ai] Gemini niet gebruikt ...`). Zo valt een demo niet stil.
+Ontbreekt de key, is Gemini niet bereikbaar (quotum, netwerk, time-out) of komt er geen bruikbare JSON terug, dan gebruikt `lib/ai.ts` de regelgebaseerde versie uit `lib/fallback.ts`. De interface meldt dat bovenin bij het onderwerp, en de echte fout staat in de terminal waar `npm run dev` draait (`[ai] Gemini niet gebruikt ...`). Zo valt een demo niet stil.
 
-De terugval kiest zinnen uit het artikel; ze schrijft nooit iets bij. Daardoor kan ze geen feiten verzinnen, maar ook niet echt herschrijven. Om toch in de buurt van A2/B1 te blijven:
+De terugval kiest zinnen uit het artikel; ze schrijft nooit iets bij. Daardoor kan ze geen feiten verzinnen, maar ook niet echt herschrijven. Om toch in de buurt van A2 te blijven:
 
 - hooguit drie zinnen en ongeveer 45 woorden per antwoord, het belangrijkste eerst;
 - zinnen die zonder afkappen passen gaan voor; een lange bronzin wordt afgekapt bij een deelzin (komma voor een voegwoord of een puntkomma), en pas als laatste redmiddel bij een heel woord met een beletselteken;
@@ -143,26 +148,33 @@ De terugval kiest zinnen uit het artikel; ze schrijft nooit iets bij. Daardoor k
 - staat het antwoord niet in het artikel, dan zegt Nova dat, in plaats van iets te kiezen dat er toevallig op lijkt. Naar een ander bericht springen mag alleen als twee woorden uit de vraag daar raken;
 - elk antwoord eindigt met een vaste, eenvoudige vraag (Gemini doet dat alleen als het helpt).
 
+De terugval herkent ook "Opnieuw uitleggen" (dan de kern van het bericht nog eens) en "Vertel over onderwerp 12" uit de lijst "Ander nieuws".
+
 De opening van de terugval noemt dezelfde drie berichten als die van Gemini en geeft ook `articleId: null`, zodat de bronweergave in beide gevallen gelijk is. De terugval schrijft hoorbaar minder goed dan Gemini; dat is bewust zichtbaar in de interface.
 
 ## Bronnen in beeld
 
-- **Lower third** in het beeld: bron, datum en link van het actieve verhaal.
-- **Bronregel** onder het huidige antwoord, met link. Onder de opening staan de drie bronnen van de opening; daarna alleen de bron van het actieve verhaal.
-- **"Bronnen"** (uitklapbaar): alle verhalen uit de feed met bron, datum, link en de tekst die Nova kreeg.
-- **Regel onderaan:** of het nieuws live uit de NOS-feed komt of uit de demo-artikelen.
+- **Onderwerp bovenin:** de titel van het actieve bericht, met "AI-presentator" erboven.
+- **"Bekijk de bron"** onder de knoppen: opent bron, publicatiedatum en de link naar het oorspronkelijke bericht. Bij de opening zijn dat de drie berichten van de opening; daarna alleen het actieve verhaal. Niets wordt aangevuld: ontbreekt een tijd, dan staat er alleen een datum.
+- **Geen voorbeeldnieuws.** Is de NOS-feed niet bereikbaar, dan stuurt de server demo-artikelen met verzonnen bronnen mee (`live: false`). Deze interface toont die niet, maar meldt dat de nieuwsbron niet bereikbaar is, met "Opnieuw proberen".
+- **"Hoe werkt dit?"** legt uit dat Nova een AI-presentator is, dat het nieuws uit de NOS-feed komt maar Nova geen dienst van de NOS is, dat AI fouten kan maken en dat Nova nog niet spreekt.
 
 ## Designkeuzes
 
-- **Praten met een presentator, niet bladeren.** Er is geen artikelkeuze en er zijn geen nieuwskaarten. Bovenaan staat het beeld (16:9, plek voor de avatar), daaronder groot het huidige antwoord, dan snelle acties en het invoerveld. Het eerdere gesprek en de bronnen zitten in uitklapblokken.
-- **Lower third als bronvermelding.** In tv-nieuws staat in die balk wie er spreekt en waarover. Hier staat Nova's naam naast bron en datum, dus de bron zit in het beeld zelf.
-- **Palet.** Diep aubergine (#1B1633) voor het studiobeeld, lila-wit papier (#F2EFF7) voor de tekst, ultramarijn (#2B4FFF) voor alles wat klikbaar is, en rood (#FF3B5C) alleen voor het live-punt en foutmeldingen.
-- **Typografie.** Bricolage Grotesque voor koppen, Schibsted Grotesk (ontworpen voor een nieuwsuitgever) voor lopende tekst en interface.
-- **Beweging.** Alleen als reactie op een actie: de lower third schuift in bij een ander verhaal, de waveform beweegt terwijl Nova bezig is. `prefers-reduced-motion` zet beide uit.
+Op de branch `design-preview`; `main` heeft nog het vorige ontwerp.
+
+- **De presentator vult het scherm.** Onder een smalle bovenbalk (Nova, "Nieuws met uitleg", "Ander nieuws", "Hoe werkt dit?") staat het beeld. Linksboven het onderwerp, onderin de ondertiteling, drie grote knoppen ("Stel een vraag", "Extra uitleg", "Volgende onderwerp") en "Bekijk de bron". Altijd op dezelfde plek. Geen kaarten, zijbalk of chatvenster.
+- **Zelf starten.** Bij het laden gebeurt niets; "Start nieuws" is de enige actie. Pas dan gaan de eerste vraag naar Gemini en de avatarsessie van start.
+- **Leesbaarheid** (richtlijnen van Stichting Lezen en Schrijven): Verdana (anders Helvetica of Arial), nergens kleiner dan 16 px, regelafstand 1,5, tekst links uitgelijnd, zwart op wit. De ondertiteling staat op een wit, dekkend vlak met zwarte tekst. In uitlegtekst staat elke zin op een eigen regel, en de belangrijkste informatie is vet: bij een antwoord de eerste zin, omdat Nova met de belangrijkste boodschap begint.
+- **Meelezen zonder nep-timing.** Nova spreekt nog niet, dus er is geen echte koppeling tussen tekst en geluid. De tekst staat in stukjes van hooguit twee regels (gemeten op de echte breedte en letter) en de lezer bladert zelf met "Terug" en "Verder".
+- **Panelen** voor "Extra uitleg", "Stel een vraag", "Ander nieuws", "Hoe werkt dit?" en de bron: native `<dialog>`, met Escape en "Sluiten", en de focus gaat terug naar de knop die het opende. Op de telefoon een blad vanaf de onderkant dat boven het schermtoetsenbord blijft.
+- **Kleur.** Zwart op wit voor alle tekst, donkerblauw (#102A5C) alleen voor de belangrijkste actie ("Start nieuws", "Extra uitleg"), een rustige warmgrijze achtergrond achter de presentator.
+- **Beweging.** Geen decoratieve animatie en geen bewegende achtergrond; alleen een rustig knipperend puntje terwijl Nova een antwoord maakt, en `prefers-reduced-motion` zet dat uit.
+- **Telefoon.** Hetzelfde ontwerp: de presentator wordt zo nodig kleiner, zodat ondertiteling en knoppen onderin binnen bereik van de duim blijven. Veilige schermranden en het schermtoetsenbord zijn meegenomen.
 
 ## Volgende stappen
 
 - Streaming response, zodat het antwoord meteen begint te lopen.
 - Meer feeds (bijv. NOS Sport of Tech) en een slimmere selectie in `lib/news.ts`, bijvoorbeeld op wat jongeren raakt.
-- Avatar laten spreken: eigen TTS-audio naar de LiveAvatar-sessie (LITE), gevoed met `reply.text`, en daarna uit de sandbox.
+- Avatar laten spreken: eigen TTS-audio (PCM 24 kHz) naar de LiveAvatar-sessie (LITE, `repeatAudio`), gevoed met `reply.text`, en daarna uit de sandbox. Het spreektempo stel je dan in bij die TTS. Pas dan horen er een knop "Pauze/Verder luisteren" en ondertiteling met echte timing bij; de SDK kan alleen stoppen (`interrupt()`), dus "verder luisteren" betekent dan het resterende deel opnieuw sturen.
 - Vergelijkende gebruikerstest met mensen met leesproblemen uit meerdere leeftijdsgroepen, met 25–44 als belangrijkste vergelijking. Ze krijgen dezelfde onderwerpen, met en zonder avatar. Meten: begrip (de kern navertellen), benodigde hulp, of ze terugkomen, en of ze de rol van AI en de bronnen begrijpen.

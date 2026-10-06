@@ -180,6 +180,12 @@ const ORDINALS: [RegExp, number][] = [
   [/\b(vijfde|fifth|verhaal ?5|story ?5)\b/, 4],
 ];
 
+// "Vertel over onderwerp 12" (uit de lijst "Ander nieuws"): elk nummer uit de lijst, niet
+// alleen de eerste vijf. Het nummer is de positie in de hele lijst, net als bij Gemini.
+const NUMBERED = /\b(?:onderwerp|bericht|verhaal|story)\s*(\d{1,3})\b/;
+// De knop "Opnieuw uitleggen". Bewust niet elk "opnieuw": "Gaan ze opnieuw staken?" is een
+// gewone vraag.
+const AGAIN = /\bopnieuw uitleggen\b|\bleg (?:het|dat|dit) (?:nog een keer|nog eens|opnieuw) uit\b/;
 const LAST = /\b(laatste|last)\b/;
 const NEXT = /\b(volgende|next)\b/;
 const PREVIOUS = /\b(vorige|previous|terug|back)\b/;
@@ -221,6 +227,10 @@ export function respond(question: string, articles: Article[], activeIndex: numb
 
   const ordinal = ORDINALS.find(([re, i]) => re.test(q) && articles[i]);
   if (ordinal) return storyIntro(articles[ordinal[1]]);
+  const numbered = articles[Number(q.match(NUMBERED)?.[1]) - 1];
+  if (numbered) return storyIntro(numbered);
+  // Opnieuw de kern van het bericht. Echt anders formuleren kan alleen Gemini.
+  if (AGAIN.test(q)) return storyIntro(focus);
   if (LAST.test(q)) return storyIntro(articles[articles.length - 1]);
 
   if (NEXT.test(q)) {

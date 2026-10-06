@@ -13,7 +13,7 @@ Fase nu: nieuws- en chatflow werkend op Gemini (free tier) met live nieuws uit d
 - Nova gebruikt voor nieuwsfeiten uitsluitend de tekst van de geladen artikelen. Geen websearch, geen tools, geen eigen kennis over actualiteit. Uitleg mag, maar als uitleg aangekondigd.
 - Elk antwoord hoort bij hooguit één artikel en meldt welk (`articleId`). Alleen de opening gaat over alle verhalen.
 - Systeeminstructie en `GEMINI_API_KEY` blijven server-side (`lib/ai.ts`, `lib/gemini.ts`). De client stuurt alleen de gespreksgeschiedenis en het actieve `articleId`. Hetzelfde geldt voor `LIVEAVATAR_API_KEY`: die staat alleen in de tokenroute, en de browser krijgt alleen een kortlevend sessietoken. Nooit een `NEXT_PUBLIC_`-variabele voor een sleutel.
-- Bronnen blijven zichtbaar: lower third voor het actieve verhaal, een bronregel onder het huidige antwoord, en de uitklap "Bronnen" met de originele tekst. Bij de opening (`articleId: null`) zijn dat de drie bronnen van de opening.
+- Bronnen blijven zichtbaar: "Bekijk de bron" bij het actieve bericht opent bron, publicatiedatum en de link naar het origineel. Bij de opening (`articleId: null`) zijn dat de drie bronnen van de opening. Geen verzonnen gegevens en geen demo-artikelen als echt nieuws.
 - Staat een antwoord niet in de artikelen, dan zegt Nova dat expliciet. Dat gedrag niet wegpoetsen om antwoorden vloeiender te maken.
 - De app praat alleen met `generateNewsResponse()` in `lib/ai.ts`, nooit direct met Gemini. Alleen `lib/gemini.ts` kent de provider.
 - AI-logica en avatar blijven los van elkaar. De avatar krijgt tekst en bron binnen, maar weet niets van artikelen of het model.
@@ -49,26 +49,32 @@ Gewijzigd op 22 sept 2026: de systeeminstructie in `lib/ai.ts` is herschreven to
 
 Gewijzigd op 23 sept 2026: `gemini-3.1-flash-lite` staat vooraan in de modellenlijst en doet het werk; `gemini-3.6-flash`, `gemini-3.8-flash` en `gemini-3.5-flash` staan erachter voor een 429 of 503. Eerder stond 3.6 vooraan. Reden voor lite vooraan: dit is het model waarop we ontwikkelen en testen, dus het moet de standaard zijn en niet het laatste redmiddel. Reden om de andere te laten staan: elk model heeft een eigen gratis quotum, en een demo mag niet stilvallen. Let op bij een gebruikerstest: een antwoord van een ander model klinkt anders, en de interface laat dat niet zien (`mode` blijft `ai`). Wil je de test zuiver houden, zet dan tijdelijk `GEMINI_MODELS=gemini-3.1-flash-lite` en controleer achteraf de terminal.
 
+Gewijzigd op 6 okt 2026: systeeminstructie gericht aangescherpt op de richtlijnen van Stichting Lezen en Schrijven. A2 als uitgangspunt (was A2/B1: B1 kan voor de doelgroep nog te moeilijk zijn), streven naar hooguit 10 woorden per zin (was 12 tot 15) met behoud van natuurlijke spreektaal, steeds hetzelfde woord voor hetzelfde begrip, geen spreekwoorden of beeldspraak, geen afkortingen tenzij direct uitgelegd, en direct de achtergrond die nodig is om de kern te begrijpen (verdieping pas op verzoek). De rest bleef staan: toon, één idee per zin, "Ter uitleg:", nuance, het JSON-formaat, OPENING, OPENING_COUNT en de navigatie. Let op: een tekstinstructie maakt de zinnen korter, niet het uitgesproken tempo; dat hoort later bij de stem.
+
+Gewijzigd op 6 okt 2026: nieuw ontwerp op de branch `design-preview` (`main` houdt het vorige). De presentator vult het scherm, met het onderwerp linksboven en ondertiteling plus drie grote knoppen onderin, naar de aangeleverde visuele richting. Leesbaarheid: Verdana, minstens 16 px, regelafstand 1,5, links uitgelijnd, zwart op wit, elke zin op een eigen regel, de belangrijkste zin vet. Niets start bij het laden: "Start nieuws" start de opening en de avatarsessie (scheelt ook quotum). Geen pauze- en microfoonknop: Nova spreekt nog niet (LITE zonder audio) en de SDK kent alleen stoppen, geen pauze; een knop zonder echte functie zou nepbediening zijn. Meelezen gaat in stukjes van hooguit twee regels die de lezer zelf doorbladert, omdat er geen echte timing is. "Ander nieuws" stuurt "Vertel over onderwerp N." met dat artikel als actief; de terugval herkent dat nu ook, net als "Opnieuw uitleggen". Demo-artikelen (`live: false`) worden niet meer getoond: de interface meldt dan dat de nieuwsbron niet bereikbaar is. De video wordt zo ingepast dat tekst en knoppen nooit over het gezicht vallen (gezicht van Wayne gemeten op de echte stream).
+
 ## Codeconventies
 
 - Lean. Geen abstracties die nog niks abstraheren, geen defensieve wrappers, geen helperlaag voor iets dat één keer voorkomt.
-- State staat in `app/page.tsx`. Pas opsplitsen in componenten als dat bestand echt onleesbaar wordt, niet uit principe. Uitzondering: `components/AnchorStage.tsx`, omdat daar de echte avatar (HeyGen LiveAvatar) in komt.
+- State staat in `app/page.tsx`. Pas opsplitsen in componenten als dat bestand echt onleesbaar wordt, niet uit principe. Uitzonderingen: `components/AnchorStage.tsx` (de echte avatar), `components/Panel.tsx` (vijf panelen, één gedrag voor focus en Escape) en `components/useReadAlong.ts` (meten en opdelen van de meeleestekst).
 - Directe property access boven ketens van null-checks; alleen guarden waar iets echt kan ontbreken.
 - CSS in `app/globals.css` met de tokens uit `:root`. Geen extra kleuren of radii introduceren zonder dat er een reden voor is.
 - Code en identifiers in het Engels, teksten in de interface in het Nederlands.
 
 ## Designkeuzes die vastliggen
 
-- De presentator staat centraal, de uitzending start bij het laden. Geen keuzescherm en geen nieuwskaarten: beeld, huidig antwoord, snelle acties, invoer. Gesprek en bronnen in uitklapblokken.
-- Lower third als bronvermelding, niet als voetnoot onder de tekst.
-- Beweging alleen als reactie op een actie, en `prefers-reduced-motion` blijft gerespecteerd.
+- De presentator vult het scherm; de gebruiker start zelf ("Start nieuws"). Geen keuzescherm, geen nieuwskaarten, geen permanent chatvenster.
+- Ondertiteling en bediening onderin, altijd op dezelfde plek; nooit tekst of knoppen over het gezicht.
+- Leesbaarheid: Verdana, minstens 16 px, regelafstand 1,5, links uitgelijnd, zwart op wit, elke zin een eigen regel, belangrijkste informatie vet.
+- Geen bediening die niets doet: pauze en microfoon pas als er echt geluid en spraak zijn.
+- Geen decoratieve animatie of bewegende achtergrond, en `prefers-reduced-motion` blijft gerespecteerd.
 - Geen decoratie die niets over de inhoud zegt.
 
 ## Volgende stappen
 
 1. Streaming response, zodat het antwoord meteen begint te lopen.
 2. Meer feeds (bijv. NOS Sport of Tech) en tekst verder opschonen voordat die in de prompt gaat.
-3. Realtime avatar (HeyGen LiveAvatar) in `components/AnchorStage.tsx`: het beeld staat (zichttest), nu nog spraak. Eigen TTS-audio naar de LITE-sessie, gevoed met `reply.text`, en daarna uit de sandbox.
+3. Realtime avatar (HeyGen LiveAvatar) in `components/AnchorStage.tsx`: het beeld staat (zichttest), nu nog spraak. Eigen TTS-audio (PCM 24 kHz) naar de LITE-sessie via `repeatAudio`, gevoed met `reply.text`, en daarna uit de sandbox. Spreektempo instellen bij die TTS. Dan pas: "Pauze/Verder luisteren" (de SDK kan alleen `interrupt()`, dus verder = rest opnieuw sturen), ondertiteling op `AVATAR_SPEAK_STARTED`/`ENDED`, de video niet meer gedempt, en de microfoon (voice chat) pas als Nova niet praat.
 4. Vergelijkende gebruikerstest (uit het doelgroeponderzoek). Deelnemers: mensen met leesproblemen uit een jongere, middelbare en oudere leeftijdsgroep, met 25–44 als belangrijkste vergelijking.
    - Dezelfde nieuwsonderwerpen, en uitleg door de avatar vergelijken met dezelfde gesproken uitleg zonder avatar.
    - Meten: begrip (deelnemers vertellen de kern na, naar het Pharos-principe), hoeveel hulp nodig is, en of ze het opnieuw willen gebruiken.
