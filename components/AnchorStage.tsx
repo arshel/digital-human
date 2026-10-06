@@ -82,6 +82,21 @@ export function AnchorStage({
     };
   }, []);
 
+  // Tabblad weggeklikt of telefoon op slot: sessie stoppen. Kijken kan dan toch niet, en een
+  // eigen avatar kost credits per minuut. Opnieuw starten gaat alleen op verzoek.
+  useEffect(() => {
+    const hide = () => {
+      const live = session.current;
+      if (!document.hidden || !live) return;
+      if (waiting.current) clearTimeout(waiting.current);
+      session.current = null;
+      live.stop().catch(() => {});
+      setStatus('ended');
+    };
+    document.addEventListener('visibilitychange', hide);
+    return () => document.removeEventListener('visibilitychange', hide);
+  }, []);
+
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
@@ -123,7 +138,7 @@ export function AnchorStage({
         if (mounted.current) setStatus('live');
       });
       live.on(SessionEvent.SESSION_DISCONNECTED, () => {
-        // Sandbox-sessies stoppen na ongeveer een minuut vanzelf.
+        // Sandbox-sessies stoppen na ongeveer een minuut vanzelf, andere na het plafond uit de tokenroute.
         if (waiting.current) clearTimeout(waiting.current);
         if (session.current !== live) return;
         session.current = null;

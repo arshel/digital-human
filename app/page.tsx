@@ -312,7 +312,7 @@ export default function Page() {
                 </p>
                 <p>
                   {avatar === 'ended'
-                    ? 'In deze testversie stopt het beeld na ongeveer een minuut.'
+                    ? 'In deze testversie stopt het beeld na een tijdje vanzelf.'
                     : 'Je kunt het nieuws wel meelezen.'}
                 </p>
                 <button type="button" className="btn" onClick={() => setAvatarRequest((n) => n + 1)}>
@@ -543,7 +543,7 @@ export default function Page() {
               <strong>Nova spreekt nog niet hardop.</strong>
             </p>
             <p>Lees de tekst in beeld mee.</p>
-            <p>In deze testversie stopt het beeld na ongeveer een minuut.</p>
+            <p>In deze testversie stopt het beeld na een tijdje vanzelf.</p>
           </section>
         </div>
       </Panel>

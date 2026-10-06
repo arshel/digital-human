@@ -1,13 +1,19 @@
 // Sessietoken voor LiveAvatar. Alleen deze route kent LIVEAVATAR_API_KEY: de browser
 // krijgt uitsluitend het kortlevende sessietoken terug, nooit de key zelf.
 //
-// Dit is voorlopig een zichttest: LITE-modus (wij sturen later zelf audio), sandbox aan
-// (kost geen credits, sessie stopt vanzelf na ongeveer een minuut) en de sandbox-avatar
-// Wayne. De sessie zelf start de SDK in de browser met dit token; die roept daarvoor
-// /v1/sessions/start aan. Zie docs.liveavatar.com/docs/lite-mode/lifecycle.
+// Dit is voorlopig een zichttest: LITE-modus (wij sturen later zelf audio). Standaard in de
+// sandbox met Wayne, de enige sandbox-avatar: kost geen credits, de sessie stopt vanzelf na
+// ongeveer een minuut. De sessie zelf start de SDK in de browser met dit token; die roept
+// daarvoor /v1/sessions/start aan. Zie docs.liveavatar.com/docs/lite-mode/lifecycle.
+//
+// Een andere avatar zet je met LIVEAVATAR_AVATAR_ID in .env.local. Die kan niet in de sandbox
+// en kost credits (LITE: 1 credit per minuut, docs.liveavatar.com/docs/faq/credits); een eigen
+// avatar vraagt bovendien een betaald abonnement. Daarom dan een plafond per sessie, en de
+// browser stopt de sessie zodra het tabblad niet meer zichtbaar is (AnchorStage).
 
 const TOKEN_URL = 'https://api.liveavatar.com/v1/sessions/token';
 const SANDBOX_AVATAR_ID = 'dd73ea75-1218-4ef3-92ce-606d5f7fbc0a';
+const MAX_SECONDS = 180;
 
 export async function POST() {
   const key = process.env.LIVEAVATAR_API_KEY;
@@ -15,6 +21,12 @@ export async function POST() {
     console.error('[liveavatar] LIVEAVATAR_API_KEY ontbreekt in .env.local');
     return Response.json({ error: 'LiveAvatar is niet geconfigureerd op de server.' }, { status: 500 });
   }
+
+  // LiveAvatar verwacht een UUID met streepjes; een ID uit HeyGen staat er vaak zonder.
+  const avatarId = process.env.LIVEAVATAR_AVATAR_ID?.trim().replace(/^(\w{8})(\w{4})(\w{4})(\w{4})(\w{12})$/, '$1-$2-$3-$4-$5');
+  const avatar = avatarId
+    ? { avatar_id: avatarId, is_sandbox: false, max_session_duration: MAX_SECONDS }
+    : { avatar_id: SANDBOX_AVATAR_ID, is_sandbox: true };
 
   let res: Response;
   try {
@@ -24,8 +36,7 @@ export async function POST() {
       signal: AbortSignal.timeout(15000),
       body: JSON.stringify({
         mode: 'LITE',
-        is_sandbox: true,
-        avatar_id: SANDBOX_AVATAR_ID,
+        ...avatar,
         video_settings: { quality: 'high', encoding: 'H264' },
       }),
     });
