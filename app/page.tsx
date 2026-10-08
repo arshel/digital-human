@@ -3,16 +3,18 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { AnchorStage, type AvatarStatus, type KeepClear } from '@/components/AnchorStage';
 import { Panel } from '@/components/Panel';
-import { splitSentences, useReadAlong } from '@/components/useReadAlong';
+import { ReadAlong, splitSentences } from '@/components/ReadAlong';
+import { useSpeech, type SpeechState } from '@/components/useSpeech';
 import {
   AgainIcon,
   AskIcon,
-  BackIcon,
   ExplainIcon,
   ExternalIcon,
   MeaningIcon,
   NextIcon,
+  PauseIcon,
   PlayIcon,
+  ReplayIcon,
   SendIcon,
   SimplerIcon,
   SourceIcon,
@@ -42,6 +44,14 @@ const NEXT_TOPIC = 'Volgende onderwerp';
 const OPENING_COUNT = 3;
 
 const INTRO = ['Nova is een AI-presentator.', 'Nova legt het nieuws van vandaag uit in eenvoudige taal.'];
+
+// De afspeelknop volgt wat de stem echt doet (useSpeech).
+const PLAYBACK: Record<SpeechState, { label: string; icon: ReactNode }> = {
+  speaking: { label: 'Pauze', icon: <PauseIcon /> },
+  paused: { label: 'Verder luisteren', icon: <PlayIcon /> },
+  done: { label: 'Opnieuw luisteren', icon: <ReplayIcon /> },
+  idle: { label: 'Luisteren', icon: <PlayIcon /> },
+};
 
 function nlDate(iso: string) {
   const date = new Date(iso);
@@ -77,14 +87,14 @@ export default function Page() {
   const [draft, setDraft] = useState('');
   const [avatarRequest, setAvatarRequest] = useState(0);
   const [avatar, setAvatar] = useState<AvatarStatus>('idle');
-  const [reading, setReading] = useState({ answer: -1, chunk: 0 });
   const [keepClear, setKeepClear] = useState<KeepClear>({ top: null, bottom: 0 });
   const sending = useRef(false);
   const mounted = useRef(true);
   const stage = useRef<HTMLElement>(null);
   const topic = useRef<HTMLDivElement>(null);
   const dock = useRef<HTMLDivElement>(null);
-  const subtitles = useRef<HTMLDivElement>(null);
+  const textBox = useRef<HTMLDivElement>(null);
+  const speech = useSpeech();
 
   const article = stories.find((a) => a.id === activeId) ?? null;
   const lastAnswerIndex = turns.map((t) => t.role).lastIndexOf('assistant');
@@ -94,8 +104,7 @@ export default function Page() {
   const blocked = !started || busy;
 
   const sentences = useMemo(() => (current ? splitSentences(current.content) : INTRO), [current]);
-  const chunks = useReadAlong(sentences, subtitles);
-  const chunk = reading.answer === lastAnswerIndex ? Math.min(reading.chunk, chunks.length - 1) : 0;
+  const canListen = speech.available && !!current && !busy && !failure;
   // Nova begint met de belangrijkste boodschap (zie de systeeminstructie), dus die zin staat
   // vet. Een begroeting of "Natuurlijk." telt niet; de opening gaat over drie dingen tegelijk.
   const keySentence = !current ? 0 : opening ? -1 : sentences.findIndex((s) => s.split(/\s+/).length >= 3);
@@ -141,6 +150,8 @@ export default function Page() {
     // De ref blokkeert ook een tweede klik die binnenkomt voordat React opnieuw rendert.
     if (sending.current) return;
     sending.current = true;
+    // De gebruiker wil iets anders horen: het vorige antwoord stopt meteen.
+    speech.stop();
     setBusy(true);
     setFailure(null);
     setPending(request.label);
@@ -198,6 +209,7 @@ export default function Page() {
   // eerste vraag naar Gemini en de avatarsessie van start.
   function startNews() {
     if (started) return;
+    speech.unlock();
     setStarted(true);
     setAvatarRequest((n) => n + 1);
     ask({ history: [], label: '', activeId: null });
@@ -205,8 +217,21 @@ export default function Page() {
 
   // De startknop verdwijnt; de focus gaat naar de tekst die nu komt.
   useEffect(() => {
-    if (started) subtitles.current?.focus();
+    if (started) textBox.current?.focus();
   }, [started]);
+
+  // Een nieuw antwoord leest Nova meteen voor: de gebruiker vroeg erom met een klik.
+  useEffect(() => {
+    if (current) speech.play(sentences);
+    // Alleen bij een nieuw antwoord, niet bij elke render.
+  }, [lastAnswerIndex]);
+
+  function listen() {
+    if (!canListen) return;
+    if (speech.state === 'speaking') speech.pause();
+    else if (speech.state === 'paused') speech.resume();
+    else speech.play(sentences);
+  }
 
   function send(question: string, label: string) {
     const text = question.trim();
@@ -241,9 +266,7 @@ export default function Page() {
 
   const close = useCallback(() => setPanel(null), []);
 
-  const turnPage = (to: number) => setReading({ answer: lastAnswerIndex, chunk: Math.max(0, Math.min(to, chunks.length - 1)) });
-
-  // Wat er in de ondertiteling staat.
+  // Wat er in het meeleesvak staat.
   let text: ReactNode;
   if (!started) {
     text = INTRO.map((s, i) => <p key={i}>{i === 0 ? <strong>{s}</strong> : s}</p>);
@@ -260,7 +283,11 @@ export default function Page() {
   } else if (failure) {
     text = <Lines text={failure.message} />;
   } else {
-    text = (chunks[chunk] ?? []).map((s) => <p key={s.index}>{s.index === keySentence ? <strong>{s.text}</strong> : s.text}</p>);
+    text = sentences.map((s, i) => (
+      <p key={i} className={i === speech.index ? 'is-spoken' : undefined}>
+        {i === keySentence ? <strong>{s}</strong> : s}
+      </p>
+    ));
   }
 
   const showTopic = started && !(failure && !current);
@@ -325,41 +352,27 @@ export default function Page() {
         )}
 
         <div ref={dock} className="dock">
-          <section className="subtitles" aria-label="Tekst van Nova">
-            <div ref={subtitles} className="subtitles-text" aria-live="polite" tabIndex={-1}>
+          <div className="readalong-slot">
+            <ReadAlong
+              textRef={textBox}
+              version={`${started}-${busy}-${!!failure}-${lastAnswerIndex}`}
+              spoken={speech.index}
+              footer={
+                started &&
+                !busy &&
+                failure && (
+                  <button type="button" className="btn" onClick={() => ask(failure.request)}>
+                    <AgainIcon />
+                    Opnieuw proberen
+                  </button>
+                )
+              }
+            >
               {text}
-            </div>
-            {started && !busy && failure && (
-              <div className="subtitles-nav">
-                <button type="button" className="btn" onClick={() => ask(failure.request)}>
-                  <AgainIcon />
-                  Opnieuw proberen
-                </button>
-              </div>
-            )}
-            {started && !busy && !failure && chunks.length > 1 && (
-              <div className="subtitles-nav">
-                <button type="button" className="btn" aria-disabled={chunk === 0} onClick={() => turnPage(chunk - 1)}>
-                  <BackIcon />
-                  Terug
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  aria-disabled={chunk === chunks.length - 1}
-                  onClick={() => turnPage(chunk + 1)}
-                >
-                  Verder
-                  <NextIcon />
-                </button>
-                <span className="subtitles-count">
-                  {chunk + 1} van {chunks.length}
-                </span>
-              </div>
-            )}
-          </section>
+            </ReadAlong>
+          </div>
 
-          <div className="controls">
+          <div className="controls" data-playback={(started && speech.available) || undefined}>
             {!started ? (
               <button key="start" type="button" className="btn btn-primary control control-start" onClick={startNews}>
                 <PlayIcon />
@@ -367,33 +380,55 @@ export default function Page() {
               </button>
             ) : (
               <>
-                <button key="ask" type="button" className="btn control" aria-disabled={blocked} onClick={() => open('ask')}>
-                  <AskIcon />
-                  Stel een vraag
-                </button>
-                <button type="button" className="btn btn-primary control" aria-disabled={blocked} onClick={() => open('extra')}>
-                  <ExplainIcon />
-                  Extra uitleg
-                </button>
-                <button
-                  type="button"
-                  className="btn control"
-                  aria-disabled={blocked}
-                  onClick={() => send(NEXT_TOPIC, `Je koos: ${NEXT_TOPIC}`)}
-                >
-                  <NextIcon />
-                  {NEXT_TOPIC}
-                </button>
+                {/* Alle labels staan op elkaar; alleen het actieve is zichtbaar. Zo is de knop altijd
+                    zo groot als het langste label, en schuift er niets op als "Pauze" verandert. */}
+                {speech.available && (
+                  <button
+                    key="listen"
+                    type="button"
+                    className="btn control control-play"
+                    aria-disabled={!canListen}
+                    onClick={listen}
+                  >
+                    <span className="control-variants">
+                      {Object.entries(PLAYBACK).map(([state, { label, icon }]) => (
+                        <span key={state} aria-hidden={state !== speech.state || undefined}>
+                          {icon}
+                          {label}
+                        </span>
+                      ))}
+                    </span>
+                  </button>
+                )}
+                <div className="control-actions">
+                  <button key="ask" type="button" className="btn control" aria-disabled={blocked} onClick={() => open('ask')}>
+                    <AskIcon />
+                    Stel een vraag
+                  </button>
+                  <button type="button" className="btn btn-primary control" aria-disabled={blocked} onClick={() => open('extra')}>
+                    <ExplainIcon />
+                    Extra uitleg
+                  </button>
+                  <button
+                    type="button"
+                    className="btn control control-next"
+                    aria-disabled={blocked}
+                    onClick={() => send(NEXT_TOPIC, `Je koos: ${NEXT_TOPIC}`)}
+                  >
+                    <NextIcon />
+                    {NEXT_TOPIC}
+                  </button>
+                </div>
               </>
             )}
-          </div>
 
-          {sources.length > 0 && (
-            <button type="button" className="source-link" onClick={() => open('source')}>
-              <SourceIcon />
-              {sources.length > 1 ? 'Bekijk de bronnen' : 'Bekijk de bron'}
-            </button>
-          )}
+            {sources.length > 0 && (
+              <button type="button" className="source-link" onClick={() => open('source')}>
+                <SourceIcon />
+                {sources.length > 1 ? 'Bekijk de bronnen' : 'Bekijk de bron'}
+              </button>
+            )}
+          </div>
         </div>
       </main>
 
@@ -521,6 +556,16 @@ export default function Page() {
           </section>
           <section>
             <h3>Welke knoppen zijn er?</h3>
+            {speech.available && (
+              <>
+                <p>
+                  <strong>Pauze:</strong> Nova stopt met voorlezen.
+                </p>
+                <p>
+                  <strong>Verder luisteren:</strong> Nova leest verder.
+                </p>
+              </>
+            )}
             <p>
               <strong>Stel een vraag:</strong> je typt zelf een vraag.
             </p>
@@ -534,15 +579,29 @@ export default function Page() {
               <strong>Ander nieuws:</strong> je kiest zelf een onderwerp.
             </p>
             <p>
-              <strong>Verder:</strong> je leest het volgende stukje tekst.
+              <strong>Toon meer:</strong> je ziet alle tekst.
             </p>
           </section>
           <section>
-            <h3>Hoor je niets?</h3>
-            <p>
-              <strong>Nova spreekt nog niet hardop.</strong>
-            </p>
-            <p>Lees de tekst in beeld mee.</p>
+            <h3>Hoe klinkt Nova?</h3>
+            {speech.available ? (
+              <>
+                <p>
+                  <strong>Nova leest de tekst voor.</strong>
+                </p>
+                <p>Je hoort de stem van je browser.</p>
+                <p>De zin die je hoort, heeft een blauwe streep.</p>
+                <p>De mond van Nova beweegt nog niet mee.</p>
+              </>
+            ) : (
+              <>
+                <p>
+                  <strong>Voorlezen werkt niet in deze browser.</strong>
+                </p>
+                <p>Er is geen Nederlandse stem.</p>
+                <p>Lees de tekst in beeld mee.</p>
+              </>
+            )}
             <p>In deze testversie stopt het beeld na een tijdje vanzelf.</p>
           </section>
         </div>

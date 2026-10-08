@@ -27,6 +27,41 @@ export function PlayIcon() {
   );
 }
 
+export function PauseIcon() {
+  return (
+    <Icon>
+      <rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none" />
+      <rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
+export function ReplayIcon() {
+  return (
+    <Icon>
+      <path d="M4 12a8 8 0 1 0 2.5-5.8" />
+      <path d="M4 3.5V8h4.5" />
+      <path d="M10.5 9v6l4.5-3z" fill="currentColor" />
+    </Icon>
+  );
+}
+
+export function MoreIcon() {
+  return (
+    <Icon>
+      <path d="M6 9l6 6 6-6" />
+    </Icon>
+  );
+}
+
+export function LessIcon() {
+  return (
+    <Icon>
+      <path d="M6 15l6-6 6 6" />
+    </Icon>
+  );
+}
+
 export function ExplainIcon() {
   return (
     <Icon>
@@ -49,14 +84,6 @@ export function NextIcon() {
   return (
     <Icon>
       <path d="M5 12h14M13 6l6 6-6 6" />
-    </Icon>
-  );
-}
-
-export function BackIcon() {
-  return (
-    <Icon>
-      <path d="M19 12H5M11 18l-6-6 6-6" />
     </Icon>
   );
 }

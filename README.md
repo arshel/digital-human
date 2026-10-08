@@ -1,6 +1,6 @@
 # Nova — AI virtual news anchor (prototype)
 
-Webprototype voor de minoropdracht: een digitale nieuwspresentator die het nieuws begrijpelijk uitlegt aan laaggeletterde 18–24-jarigen. De app opent op de presentator en begint pas als je op "Start nieuws" drukt. Dan haalt Nova het actuele nieuws uit de NOS-feed, begroet je en noemt drie onderwerpen. Daarna kies je "Volgende onderwerp", vraag je via "Extra uitleg" om "Leg het makkelijker uit", "Wat betekent dit?", "Waarom is dit belangrijk?" of "Opnieuw uitleggen", typ je zelf een vraag ("Stel een vraag"), of kies je een onderwerp uit "Ander nieuws". Je leest mee in de ondertiteling over het beeld. De avatar (LiveAvatar) toont beeld, maar Nova spreekt nog niet.
+Webprototype voor de minoropdracht: een digitale nieuwspresentator die het nieuws begrijpelijk uitlegt aan laaggeletterde 18–24-jarigen. De app opent op de presentator en begint pas als je op "Start nieuws" drukt. Dan haalt Nova het actuele nieuws uit de NOS-feed, begroet je en noemt drie onderwerpen. Daarna kies je "Volgende onderwerp", vraag je via "Extra uitleg" om "Leg het makkelijker uit", "Wat betekent dit?", "Waarom is dit belangrijk?" of "Opnieuw uitleggen", typ je zelf een vraag ("Stel een vraag"), of kies je een onderwerp uit "Ander nieuws". Nova leest elk antwoord voor met de stem van de browser, en je leest mee in een wit tekstvak over het beeld. De avatar (LiveAvatar) toont beeld, maar beweegt zijn mond nog niet mee.
 
 ## Starten
 
@@ -22,10 +22,11 @@ lib/gemini.ts                het enige bestand dat Gemini kent (REST-aanroep, ke
 lib/fallback.ts              regelgebaseerde terugval als Gemini ontbreekt of faalt
 app/api/anchor/route.ts      serverroute: validatie, rate limit, roept generateNewsResponse() aan
 app/api/liveavatar/token/route.ts  sessietoken voor LiveAvatar (API-key blijft server-side)
-app/page.tsx                 gespreksstate, ondertiteling, bediening, panelen en bronnen
+app/page.tsx                 gespreksstate, meeleesvak, bediening, panelen en bronnen
 components/AnchorStage.tsx   beeld van de presentator (LiveAvatar), past de video in zonder het gezicht te bedekken
 components/Panel.tsx         paneel als <dialog>: focus erin, Escape sluit, focus terug; op de telefoon een blad onderin
-components/useReadAlong.ts   meelezen: antwoord in stukjes van hooguit twee regels, elke zin op een eigen regel
+components/ReadAlong.tsx     meeleesvak: hele antwoord, zo hoog als de tekst, scrollen of "Toon meer"
+components/useSpeech.ts      voorlezen met de browserstem (Web Speech API): per zin, echte pauze
 components/icons.tsx         pictogrammen (altijd naast tekst)
 app/globals.css              designtokens en layout
 ```
@@ -36,7 +37,7 @@ app/globals.css              designtokens en layout
 2. De route valideert de aanvraag (zie "Grenzen aan de API") en haalt de verhalen op via `getStories()` in `lib/news.ts`.
 3. De server geeft Gemini de systeeminstructie, een begrensde selectie artikelen (genummerd, met id, bron, datum en tekst) en het actieve onderwerp.
 4. Gemini antwoordt in JSON: `{ text, articleId }`. `lib/ai.ts` controleert dat `articleId` echt een van de geladen artikelen is en voegt `mode` toe (`ai` of `fallback`).
-5. De server stuurt ook de verhalen mee terug. De pagina toont `text` als ondertiteling over het beeld, zet het actieve artikel en laat de bron zien. Is `live` false (demo-artikelen), dan toont de pagina die niet; zie "Bronnen in beeld".
+5. De server stuurt ook de verhalen mee terug. De pagina toont `text` in het meeleesvak, leest het voor, zet het actieve artikel en laat de bron zien. Is `live` false (demo-artikelen), dan toont de pagina die niet; zie "Bronnen in beeld".
 6. Bij elke vraag stuurt de pagina de geschiedenis, het actieve `articleId` en de ids van de verhalen mee — nooit artikeltekst. Zo snapt Gemini "die eerste", "dit" en "volgende onderwerp", en blijft het gesprek bij dezelfde verhalen in dezelfde volgorde, ook als de feed intussen ververst.
 
 ### De opening: precies drie verhalen
@@ -95,14 +96,14 @@ Het antwoord komt op één plek binnen, in `ask()` in `app/page.tsx`, als platte
 ```ts
 const reply = await res.json();   // { text, articleId, mode, stories, live }
 setTurns(...)                     // { role: 'assistant', content: reply.text, articleId }
-// later: avatar.speak(reply.text)
+speech.play(sentences)            // nu: de browserstem; later audio naar de avatar
 ```
 
 `components/AnchorStage.tsx` weet niets van artikelen of AI: het krijgt alleen een startverzoek (`startRequest`) en de plekken waar tekst en knoppen over het beeld liggen (`keepClear`), en meldt zijn status terug. De avatarvideo staat er in de plaats van het "N"-gezicht zodra de sessie loopt; later krijgt het ook `text` om uit te spreken.
 
 ### Avatar-zichttest (LiveAvatar)
 
-"Start nieuws" start ook een LiveAvatar-sessie en zet het avatarbeeld schermvullend in beeld, nooit vanzelf bij het laden. Dit is nog steeds een zichttest: geen microfoon, geen spraak, geen tekst-naar-spraak en geen koppeling met Gemini. De avatar staat stil te wachten. De nieuwsflow blijft er los van.
+"Start nieuws" start ook een LiveAvatar-sessie en zet het avatarbeeld schermvullend in beeld, nooit vanzelf bij het laden. Voor de avatar is dit nog een zichttest: geen microfoon, geen spraak via de avatar en geen koppeling met Gemini. De avatar staat stil te wachten; het voorlezen doet de browser (zie "Voorlezen"). De nieuwsflow blijft er los van.
 
 - **LITE-modus**, want wij leveren later zelf de audio; LiveAvatar rendert alleen het beeld.
 - **Sandbox aan** (`is_sandbox: true`): kost geen credits, en de sessie stopt na ongeveer een minuut vanzelf. De avatar is Wayne (`dd73ea75-1218-4ef3-92ce-606d5f7fbc0a`), de enige sandbox-avatar.
@@ -111,8 +112,19 @@ setTurns(...)                     // { role: 'assistant', content: reply.text, a
 - **De browser** laadt `@heygen/liveavatar-web-sdk` pas na de klik (dynamische import, dus niet in de eerste bundel), maakt `new LiveAvatarSession(sessionToken)` en roept `start()` aan. De SDK doet daarmee zelf `POST /v1/sessions/start` en verbindt met de LiveKit-room. Bij `SESSION_STREAM_READY` gaat de stream met `attach()` in het `<video>`-element.
 - **Geen microfoon.** De SDK start voice chat alleen als je `voiceChat` meegeeft in de config. Dat doen we niet, dus de browser vraagt geen toestemming.
 - **Statussen** in beeld: "Het beeld van de presentator start…", "De presentator werkt nu niet" (met "Probeer het opnieuw") en "Het beeld is gestopt" (de sandbox stopt na een minuut; met "Start het beeld opnieuw"). Een nieuwe sessie start alleen na zo'n klik. Komt er binnen 15 seconden geen beeld, dan stopt de sessie en verschijnt de foutmelding. Het verlaten van de pagina sluit de sessie af.
-- **Wat de SDK kan** (gecontroleerd in `@heygen/liveavatar-web-sdk` 0.0.19): `repeat(tekst)` laat de avatar tekst uitspreken, maar alleen in FULL-modus; in LITE-modus spreekt de avatar alleen audio die je zelf aanlevert (`repeatAudio`, PCM 24 kHz). Pauzeren en hervatten bestaan niet, alleen `interrupt()` (stoppen). Events voor ondertiteling: `AVATAR_SPEAK_STARTED`/`ENDED` en `AVATAR_TRANSCRIPTION`. Daarom heeft de interface nu geen pauzeknop en geen microfoonknop: er is nog geen geluid om te pauzeren.
-- **Beeld zonder bedekt gezicht.** De video houdt altijd zijn eigen verhouding (16:9, niet uitgerekt). `AnchorStage` rekent uit hoe groot hij mag, zodat het onderwerp bovenin en de ondertiteling en knoppen onderin buiten het gezicht blijven. Het gezicht van Wayne is gemeten op de echte stream (haar vanaf ~10%, kin tot ~62% van de beeldhoogte); een andere avatar moet je opnieuw meten (`FACE` in `AnchorStage.tsx`). Naast de video staat één stilstaand, vervaagd beeld van de randen van het decor, zodat het beeld zonder naad doorloopt.
+- **Wat de SDK kan** (gecontroleerd in `@heygen/liveavatar-web-sdk` 0.0.19): `repeat(tekst)` laat de avatar tekst uitspreken, maar alleen in FULL-modus; in LITE-modus spreekt de avatar alleen audio die je zelf aanlevert (`repeatAudio`, PCM 24 kHz). Pauzeren en hervatten bestaan niet, alleen `interrupt()` (stoppen). Events voor ondertiteling: `AVATAR_SPEAK_STARTED`/`ENDED` en `AVATAR_TRANSCRIPTION`, maar alleen voor wat de avatar zelf zegt; voor onze tekst in LITE-modus levert de integratie geen ondertiteling. Een instelling voor de achtergrond heeft de SDK niet.
+- **Beeld zonder bedekt gezicht.** De video houdt altijd zijn eigen verhouding (16:9, niet uitgerekt). `AnchorStage` rekent uit hoe groot hij mag, zodat het onderwerp bovenin en de ondertiteling en knoppen onderin buiten het gezicht blijven. Het gezicht van Wayne is gemeten op de echte stream (haar vanaf ~10%, kin tot ~62% van de beeldhoogte); een andere avatar moet je opnieuw meten (`FACE` in `AnchorStage.tsx`). De video heeft `object-fit: contain` in een vlak met de verhouding van de stream zelf (gemeten bij `loadedmetadata`): niets afgesneden, niets uitgerekt, geen transform-vergroting. Naast de video staat één stilstaand, vervaagd beeld van de randen van het decor, zodat het beeld zonder naad doorloopt.
+- **Achtergrond.** Het kantoor achter Wayne zit in de video van de avatar zelf. Dat vervangen we niet met CSS: een rustige nieuwsstudio vraagt een andere avatar of een andere opname in HeyGen. Onze eigen achtergrond (zolang er geen beeld is) is een rustige, donkerblauwe studio zonder beweging of tekst.
+
+### Voorlezen
+
+`components/useSpeech.ts` leest elk nieuw antwoord voor met de Web Speech API van de browser. Geen extra dienst, geen sleutel en geen kosten; kiest Chrome een stem van Google, dan gaat de tekst daarvoor wel naar Google.
+
+- **Alleen een Nederlandse stem** (nl-NL gaat voor nl-BE). Heeft de browser die niet, dan is er geen afspeelknop en meldt "Hoe werkt dit?" dat voorlezen niet werkt. Een Engelse stem die Nederlands uitspreekt, is niet te volgen.
+- **Per zin een uiting.** De markering in het meeleesvak volgt het start-event van de stem per zin: echte koppeling, geen geschatte timing. Het tempo staat op 0,9 (`rate`): echt rustiger uitgesproken, niet alleen kortere zinnen.
+- **Pauze is echt stil.** "Pauze" breekt de stem af; "Verder luisteren" begint de onderbroken zin opnieuw. `pause()`/`resume()` van de browser gebruiken we niet: op Android stopt `pause()` alles, en stemmen van Google in Chrome hervatten soms niet. Aan het eind: "Opnieuw luisteren". Wil de browser eerst een klik, dan staat er "Luisteren".
+- **Een nieuwe vraag stopt het vorige antwoord** meteen; het nieuwe antwoord klinkt vanzelf (de gebruiker vroeg erom met een klik). Op iOS mag een pagina pas praten na een tik; de klik op "Start nieuws" geeft die toestemming.
+- **De mond beweegt niet mee.** LiveAvatar (LITE) beweegt alleen op audio die wij zelf als PCM aanleveren, en de browser geeft het geluid van zijn stem niet vrij. Zie "Volgende stappen".
 
 ## Taalniveau
 
@@ -156,26 +168,28 @@ De opening van de terugval noemt dezelfde drie berichten als die van Gemini en g
 ## Bronnen in beeld
 
 - **Onderwerp bovenin:** de titel van het actieve bericht, met "AI-presentator" erboven.
-- **"Bekijk de bron"** onder de knoppen: opent bron, publicatiedatum en de link naar het oorspronkelijke bericht. Bij de opening zijn dat de drie berichten van de opening; daarna alleen het actieve verhaal. Niets wordt aangevuld: ontbreekt een tijd, dan staat er alleen een datum.
+- **"Bekijk de bron"** naast de knoppen (op de telefoon eronder): opent bron, publicatiedatum en de link naar het oorspronkelijke bericht. Bij de opening zijn dat de drie berichten van de opening; daarna alleen het actieve verhaal. Niets wordt aangevuld: ontbreekt een tijd, dan staat er alleen een datum.
 - **Geen voorbeeldnieuws.** Is de NOS-feed niet bereikbaar, dan stuurt de server demo-artikelen met verzonnen bronnen mee (`live: false`). Deze interface toont die niet, maar meldt dat de nieuwsbron niet bereikbaar is, met "Opnieuw proberen".
-- **"Hoe werkt dit?"** legt uit dat Nova een AI-presentator is, dat het nieuws uit de NOS-feed komt maar Nova geen dienst van de NOS is, dat AI fouten kan maken en dat Nova nog niet spreekt.
+- **"Hoe werkt dit?"** legt uit dat Nova een AI-presentator is, dat het nieuws uit de NOS-feed komt maar Nova geen dienst van de NOS is, dat AI fouten kan maken, en dat Nova voorleest met de stem van de browser zonder dat de mond meebeweegt.
 
 ## Designkeuzes
 
 Op de branch `design-preview`; `main` heeft nog het vorige ontwerp.
 
-- **De presentator vult het scherm.** Onder een smalle bovenbalk (Nova, "Nieuws met uitleg", "Ander nieuws", "Hoe werkt dit?") staat het beeld. Linksboven het onderwerp, onderin de ondertiteling, drie grote knoppen ("Stel een vraag", "Extra uitleg", "Volgende onderwerp") en "Bekijk de bron". Altijd op dezelfde plek. Geen kaarten, zijbalk of chatvenster.
+- **De presentator vult het scherm.** Onder een smalle bovenbalk (Nova, "Nieuws met uitleg", "Ander nieuws", "Hoe werkt dit?") staat het beeld. Linksboven het onderwerp (op een liggend scherm links van het gezicht, zodat de presentator zo groot mogelijk kan), onderin een compact meeleesvak en daaronder de bediening: de afspeelknop, "Stel een vraag", "Extra uitleg", "Volgende onderwerp" en "Bekijk de bron". Altijd op dezelfde plek. Geen kaarten, zijbalk of chatvenster.
+- **Compacte bediening.** Pictogram (20 px) naast het label, minstens 48 px hoog, 12 px boven en onder, geen vaste hoogte: bij grotere tekst groeit een knop mee. Op een smal scherm staan de knoppen in twee kolommen en mag een label over twee regels; is een kolom te smal, dan één kolom. Letters worden nooit kleiner. De afspeelknop is zo breed als zijn langste label, zodat er niets verschuift als "Pauze" "Verder luisteren" wordt. Gemeten met een nep-stream: op 1280×720 ging de presentator van 647×364 naar 1179×663 px, op 1440×900 van 1199×675 naar 1440×810. Op een telefoon van 390 px staat de presentator nu helemaal in beeld.
 - **Zelf starten.** Bij het laden gebeurt niets; "Start nieuws" is de enige actie. Pas dan gaan de eerste vraag naar Gemini en de avatarsessie van start.
-- **Leesbaarheid** (richtlijnen van Stichting Lezen en Schrijven): Verdana (anders Helvetica of Arial), nergens kleiner dan 16 px, regelafstand 1,5, tekst links uitgelijnd, zwart op wit. De ondertiteling staat op een wit, dekkend vlak met zwarte tekst. In uitlegtekst staat elke zin op een eigen regel, en de belangrijkste informatie is vet: bij een antwoord de eerste zin, omdat Nova met de belangrijkste boodschap begint.
-- **Meelezen zonder nep-timing.** Nova spreekt nog niet, dus er is geen echte koppeling tussen tekst en geluid. De tekst staat in stukjes van hooguit twee regels (gemeten op de echte breedte en letter) en de lezer bladert zelf met "Terug" en "Verder".
+- **Leesbaarheid** (richtlijnen van Stichting Lezen en Schrijven): Verdana (anders Helvetica of Arial), nergens kleiner dan 16 px, regelafstand 1,5, tekst links uitgelijnd, zwart op wit. Het meeleesvak is een wit, dekkend vlak met zwarte tekst. In uitlegtekst staat elke zin op een eigen regel, en de belangrijkste informatie is vet: bij een antwoord de eerste zin, omdat Nova met de belangrijkste boodschap begint.
+- **Meelezen zonder bladzijden.** Het hele antwoord staat in één vak, elke zin op een eigen regel. Het vak is zo hoog als de tekst (geen leeg wit vlak bij "Goedemorgen."), tot drie regels (twee op een laag scherm); is het meer, dan scrolt het vak en toont "Toon meer" alles. Niets wordt afgekapt. Tijdens het voorlezen staat de zin die klinkt lichtblauw met een streep ervoor en blijft die in beeld. De ruimte voor het vak ligt vast, zodat de presentator en de knoppen niet verspringen als een antwoord korter of langer is.
 - **Panelen** voor "Extra uitleg", "Stel een vraag", "Ander nieuws", "Hoe werkt dit?" en de bron: native `<dialog>`, met Escape en "Sluiten", en de focus gaat terug naar de knop die het opende. Op de telefoon een blad vanaf de onderkant dat boven het schermtoetsenbord blijft.
-- **Kleur.** Zwart op wit voor alle tekst, donkerblauw (#102A5C) alleen voor de belangrijkste actie ("Start nieuws", "Extra uitleg"), een rustige warmgrijze achtergrond achter de presentator.
+- **Kleur.** Zwart op wit voor alle tekst, donkerblauw (#102A5C) voor de belangrijkste actie ("Start nieuws", "Extra uitleg") en de rand van de afspeelknop, lichtblauw achter de zin die klinkt, en een rustige donkerblauwe studio als eigen achtergrond achter de presentator.
 - **Beweging.** Geen decoratieve animatie en geen bewegende achtergrond; alleen een rustig knipperend puntje terwijl Nova een antwoord maakt, en `prefers-reduced-motion` zet dat uit.
-- **Telefoon.** Hetzelfde ontwerp: de presentator wordt zo nodig kleiner, zodat ondertiteling en knoppen onderin binnen bereik van de duim blijven. Veilige schermranden en het schermtoetsenbord zijn meegenomen.
+- **Telefoon.** Hetzelfde ontwerp: het meeleesvak over de volle breedte met 16 px aan beide kanten, de knoppen in twee kolommen binnen bereik van de duim, de bovenbalk op één rij vanaf 390 px. Past de hele presentator tussen onderwerp en tekst, dan staat hij daar helemaal; anders wordt hij zo nodig kleiner en blijft in elk geval het gezicht vrij. Veilige schermranden (ook onderin, `safe-area-inset-bottom`) en het schermtoetsenbord zijn meegenomen; op een laag scherm of met grote tekst scrolt de pagina.
 
 ## Volgende stappen
 
 - Streaming response, zodat het antwoord meteen begint te lopen.
 - Meer feeds (bijv. NOS Sport of Tech) en een slimmere selectie in `lib/news.ts`, bijvoorbeeld op wat jongeren raakt.
-- Avatar laten spreken: eigen TTS-audio (PCM 24 kHz) naar de LiveAvatar-sessie (LITE, `repeatAudio`), gevoed met `reply.text`, en daarna uit de sandbox. Het spreektempo stel je dan in bij die TTS. Pas dan horen er een knop "Pauze/Verder luisteren" en ondertiteling met echte timing bij; de SDK kan alleen stoppen (`interrupt()`), dus "verder luisteren" betekent dan het resterende deel opnieuw sturen.
+- De mond van de avatar laten meebewegen: TTS-audio (PCM 24 kHz) per zin naar de LiveAvatar-sessie (LITE, `repeatAudio`) in plaats van de browserstem, en daarna uit de sandbox (die stopt na een minuut). De afspeelknop en de markering per zin kunnen blijven; de SDK kan alleen stoppen (`interrupt()`), dus "Verder luisteren" stuurt dan de onderbroken zin en de rest opnieuw.
+- Een rustige nieuwsstudio als decor: een andere avatar of opname in HeyGen.
 - Vergelijkende gebruikerstest met mensen met leesproblemen uit meerdere leeftijdsgroepen, met 25–44 als belangrijkste vergelijking. Ze krijgen dezelfde onderwerpen, met en zonder avatar. Meten: begrip (de kern navertellen), benodigde hulp, of ze terugkomen, en of ze de rol van AI en de bronnen begrijpen.

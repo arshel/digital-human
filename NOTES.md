@@ -6,7 +6,7 @@ Lees dit samen met de README. De README beschrijft wat er staat, dit bestand bes
 
 Prototype voor de minor Digital Humans (sept 2026 - feb 2027). Opdracht (Fontys Journalistiek): een virtual newsfluencer die ingewikkeld nieuws begrijpelijk uitlegt aan mensen die laaggeletterd zijn of moeite hebben met digitale informatie, met een conversational interface en zichtbare bronnen. De opdracht noemt geen leeftijd. Onze doelgroep: laaggeletterde 18–24-jarigen, oftewel jongvolwassenen die moeite hebben met geschreven nieuws (onderbouwing in ons doelgroeponderzoek, `Doelgroeponderzoek_virtual_newsfluencer.docx`). Beoordeling loopt via portfolio, dus keuzes moeten uit te leggen zijn — bij een wijziging in de architectuur of het design de reden hier of in de README bijschrijven.
 
-Fase nu: nieuws- en chatflow werkend op Gemini (free tier) met live nieuws uit de NOS-feed; terugval op regels en demo-artikelen. Avatar: eerste zichttest met LiveAvatar (beeld, nog geen spraak).
+Fase nu: nieuws- en chatflow werkend op Gemini (free tier) met live nieuws uit de NOS-feed; terugval op regels en demo-artikelen. Avatar: zichttest met LiveAvatar (beeld); voorlezen met de browserstem, nog zonder bewegende mond.
 
 ## Harde regels
 
@@ -55,10 +55,11 @@ Gewijzigd op 6 okt 2026: nieuw ontwerp op de branch `design-preview` (`main` hou
 
 Gewijzigd op 6 okt 2026: `LIVEAVATAR_AVATAR_ID` maakt een andere avatar mogelijk (gevraagd: HeyGen-avatar `a50e81ea…`). Standaard blijft Wayne in de sandbox, omdat alleen die gratis is; een andere avatar kost credits (LITE 1 per minuut) en een eigen avatar een betaald abonnement. Met een eigen avatar: plafond van 3 minuten per sessie en stoppen zodra het tabblad verborgen is. Let op: de plek van het gezicht (`FACE` in `AnchorStage.tsx`) is gemeten op Wayne; bij een andere avatar opnieuw meten.
 
+Gewijzigd op 8 okt 2026: compactere bediening op `design-preview`, omdat het witte tekstvak en de grote knoppen te veel van de presentator bedekten. Het meeleesvak toont het hele antwoord (geen bladzijden met "Terug"/"Verder" en teller meer), is zo hoog als de tekst tot drie regels en scrolt daarna, met "Toon meer". De ruimte ervoor ligt vast, zodat presentator en knoppen niet verspringen. Knoppen: pictogram naast het label, 48 px hoog; op de telefoon twee kolommen. Bovenbalk en onderwerp compacter, geen line-clamp meer. Nieuw: voorlezen met de Web Speech API van de browser (`useSpeech`), met een echte afspeelknop (Pauze / Verder luisteren / Opnieuw luisteren). Waarom de browserstem: hij werkt nu, zonder nieuwe dienst, sleutel of kosten, met echte events per zin en een echte pauze. Waarom niet via de avatar: LITE beweegt alleen op eigen PCM-audio, en daar is een TTS-dienst voor nodig; de sandbox stopt bovendien na een minuut. Nadeel: de mond van de avatar beweegt niet mee, en de stem verschilt per browser. Zonder Nederlandse stem geen afspeelknop. De achtergrond van de frontend is een rustige donkerblauwe studio; het kantoor zit in de video van de avatar en blijft staan (dat vraagt een andere avatar in HeyGen).
 ## Codeconventies
 
 - Lean. Geen abstracties die nog niks abstraheren, geen defensieve wrappers, geen helperlaag voor iets dat één keer voorkomt.
-- State staat in `app/page.tsx`. Pas opsplitsen in componenten als dat bestand echt onleesbaar wordt, niet uit principe. Uitzonderingen: `components/AnchorStage.tsx` (de echte avatar), `components/Panel.tsx` (vijf panelen, één gedrag voor focus en Escape) en `components/useReadAlong.ts` (meten en opdelen van de meeleestekst).
+- State staat in `app/page.tsx`. Pas opsplitsen in componenten als dat bestand echt onleesbaar wordt, niet uit principe. Uitzonderingen: `components/AnchorStage.tsx` (de echte avatar), `components/Panel.tsx` (vijf panelen, één gedrag voor focus en Escape), `components/ReadAlong.tsx` (het meeleesvak: meten, scrollen, "Toon meer") en `components/useSpeech.ts` (de browserstem).
 - Directe property access boven ketens van null-checks; alleen guarden waar iets echt kan ontbreken.
 - CSS in `app/globals.css` met de tokens uit `:root`. Geen extra kleuren of radii introduceren zonder dat er een reden voor is.
 - Code en identifiers in het Engels, teksten in de interface in het Nederlands.
@@ -66,9 +67,9 @@ Gewijzigd op 6 okt 2026: `LIVEAVATAR_AVATAR_ID` maakt een andere avatar mogelijk
 ## Designkeuzes die vastliggen
 
 - De presentator vult het scherm; de gebruiker start zelf ("Start nieuws"). Geen keuzescherm, geen nieuwskaarten, geen permanent chatvenster.
-- Ondertiteling en bediening onderin, altijd op dezelfde plek; nooit tekst of knoppen over het gezicht.
+- Meeleesvak en bediening onderin, altijd op dezelfde plek; nooit tekst of knoppen over het gezicht.
 - Leesbaarheid: Verdana, minstens 16 px, regelafstand 1,5, links uitgelijnd, zwart op wit, elke zin een eigen regel, belangrijkste informatie vet.
-- Geen bediening die niets doet: pauze en microfoon pas als er echt geluid en spraak zijn.
+- Geen bediening die niets doet: de afspeelknop volgt wat de stem echt doet en verdwijnt als er geen Nederlandse stem is; een microfoonknop pas als er spraakherkenning is.
 - Geen decoratieve animatie of bewegende achtergrond, en `prefers-reduced-motion` blijft gerespecteerd.
 - Geen decoratie die niets over de inhoud zegt.
 
@@ -76,7 +77,7 @@ Gewijzigd op 6 okt 2026: `LIVEAVATAR_AVATAR_ID` maakt een andere avatar mogelijk
 
 1. Streaming response, zodat het antwoord meteen begint te lopen.
 2. Meer feeds (bijv. NOS Sport of Tech) en tekst verder opschonen voordat die in de prompt gaat.
-3. Realtime avatar (HeyGen LiveAvatar) in `components/AnchorStage.tsx`: het beeld staat (zichttest), nu nog spraak. Eigen TTS-audio (PCM 24 kHz) naar de LITE-sessie via `repeatAudio`, gevoed met `reply.text`, en daarna uit de sandbox. Spreektempo instellen bij die TTS. Dan pas: "Pauze/Verder luisteren" (de SDK kan alleen `interrupt()`, dus verder = rest opnieuw sturen), ondertiteling op `AVATAR_SPEAK_STARTED`/`ENDED`, de video niet meer gedempt, en de microfoon (voice chat) pas als Nova niet praat.
+3. Realtime avatar (HeyGen LiveAvatar) in `components/AnchorStage.tsx`: het beeld staat (zichttest) en de browser leest voor. Volgende stap is een meebewegende mond: TTS-audio (PCM 24 kHz) per zin naar de LITE-sessie via `repeatAudio` in plaats van de browserstem, en daarna uit de sandbox. De afspeelknop blijft (de SDK kan alleen `interrupt()`, dus verder = de onderbroken zin en de rest opnieuw sturen), de video niet meer gedempt, en de microfoon (voice chat) pas als Nova niet praat. Voor een nieuwsstudio als decor: een andere avatar of opname in HeyGen.
 4. Vergelijkende gebruikerstest (uit het doelgroeponderzoek). Deelnemers: mensen met leesproblemen uit een jongere, middelbare en oudere leeftijdsgroep, met 25–44 als belangrijkste vergelijking.
    - Dezelfde nieuwsonderwerpen, en uitleg door de avatar vergelijken met dezelfde gesproken uitleg zonder avatar.
    - Meten: begrip (deelnemers vertellen de kern na, naar het Pharos-principe), hoeveel hulp nodig is, en of ze het opnieuw willen gebruiken.

@@ -6,10 +6,14 @@ import type { LiveAvatarSession } from '@heygen/liveavatar-web-sdk';
 // Het beeld van de presentator: een LiveAvatar-sessie (LITE-modus, sandbox, avatar Wayne).
 // Wat deze integratie wel en niet kan (gecontroleerd in @heygen/liveavatar-web-sdk 0.0.19):
 // - Beeld: ja. De stream komt in de <video>, in de eigen verhouding, nooit uitgerekt.
-// - Spraak: nee. In LITE-modus spreekt de avatar alleen audio die wij zelf aanleveren
-//   (repeatAudio, PCM 24 kHz) en die is er nog niet. repeat(tekst) werkt alleen in FULL-modus.
-//   Daarom is de video gedempt en is er geen pauzeknop: er valt niets te pauzeren.
+// - Spraak: niet via de avatar. In LITE-modus spreekt de avatar alleen audio die wij zelf
+//   aanleveren (repeatAudio, PCM 24 kHz); repeat(tekst) werkt alleen in FULL-modus. Nova leest
+//   daarom voor met de stem van de browser (useSpeech). Die geeft zijn geluid niet vrij, dus de
+//   mond van de avatar beweegt niet mee en de video blijft gedempt.
 // - Pauzeren en hervatten: de SDK kent alleen interrupt() (stoppen), geen pauze.
+// - Ondertiteling: de SDK meldt alleen wat de avatar zelf zegt (FULL-modus), niet onze tekst.
+// - Achtergrond: het decor (nu een kantoor) zit in de video van de avatar zelf. Een studio vraagt
+//   een andere avatar of opname in HeyGen; de SDK heeft er geen instelling voor.
 // - Microfoon: uit. Zonder voiceChat in de config start de SDK geen spraakchat.
 // De sessie start alleen als de gebruiker daarom vraagt (startRequest), nooit bij het laden.
 // Kent geen nieuws of AI: alleen of het beeld moet starten en waar het vrij moet blijven.
@@ -29,12 +33,13 @@ type Box = { x: number; y: number; w: number; h: number };
 
 // Zo groot mogelijk in de eigen verhouding, zonder dat tekst of knoppen over het gezicht
 // vallen. Past het niet, dan stap voor stap kleiner: liever een kleinere presentator dan een
-// bedekt gezicht. Is er ruimte over (een hoge telefoon), dan staat het gezicht midden in de
-// vrije ruimte; anders staat de presentator bovenaan, zoals in het ontwerp.
+// bedekt gezicht. Past de hele video tussen het onderwerp en het meeleesvak (een telefoon), dan
+// staat hij daar in het midden, helemaal zichtbaar. Anders staat het gezicht zo midden mogelijk
+// in de vrije ruimte en valt alleen het bovenlichaam achter de tekst en de knoppen.
 function fit(width: number, height: number, ratio: number, clear: KeepClear): Box | null {
   if (!width || !height) return null;
   let box: Box | null = null;
-  for (let h = Math.min(height, width / ratio), i = 0; i < 80 && h > 48; i++, h *= 0.97) {
+  for (let h = Math.min(height, width / ratio), i = 0; i < 300 && h > 48; i++, h *= 0.99) {
     const w = h * ratio;
     const x = (width - w) / 2;
     const top = clear.top;
@@ -42,7 +47,8 @@ function fit(width: number, height: number, ratio: number, clear: KeepClear): Bo
     const free = overlapsTop ? top.bottom + GAP : 0;
     const lowest = Math.max(0, free - FACE.top * h);
     const highest = Math.min(height - h, clear.bottom - GAP - FACE.bottom * h);
-    const centred = (free + clear.bottom) / 2 - ((FACE.top + FACE.bottom) / 2) * h;
+    const room = clear.bottom - GAP - free;
+    const centred = h <= room ? free + (room - h) / 2 : (free + clear.bottom) / 2 - ((FACE.top + FACE.bottom) / 2) * h;
     box = { x, y: Math.min(Math.max(centred, lowest), Math.max(highest, lowest)), w, h };
     if (lowest <= highest) return box;
   }
@@ -214,7 +220,7 @@ export function AnchorStage({
         aria-hidden="true"
         style={backdrop ? { backgroundImage: `url(${backdrop})` } : undefined}
       />
-      {/* Gedempt: de avatar zegt nog niets (zie boven), en zo blokkeert de browser het afspelen niet. */}
+      {/* Gedempt: de avatar zelf zegt niets (zie boven), en zo blokkeert de browser het afspelen niet. */}
       <video
         ref={video}
         className="presenter-video"
