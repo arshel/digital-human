@@ -271,15 +271,31 @@ export default function Page() {
         });
         return;
       }
-      // Hoort het antwoord niet bij dit bericht, dan nooit afspelen.
-      if (data.articleId !== target.id) return;
+      // Hoort het antwoord bij een ander bericht, dan alleen als de server dat zegt: een vraag
+      // over ander nieuws van vandaag (lib/questions.ts). Dan naar dat bericht, zodat bron, datum
+      // en 'Bekijk bron' bij het antwoord horen. In alle andere gevallen nooit afspelen.
+      let context = previous;
+      if (data.articleId !== target.id) {
+        const other =
+          data.switchedFrom === target.id
+            ? articles.findIndex((a) => a.id === data.articleId)
+            : -1;
+        if (other < 0) {
+          setProblem({
+            message: "Dit gaat over een bericht dat hier niet meer staat.",
+          });
+          return;
+        }
+        setIndex(other);
+        context = [];
+      }
 
       const next: Fragment = {
         ...data,
         action,
         sentences: splitSentences(data.spoken),
       };
-      setHistory([...previous, { action, spoken: data.spoken }].slice(-6));
+      setHistory([...context, { action, spoken: data.spoken }].slice(-6));
       cycleTiming.current.text(mine, performance.now(), { requestId: data.requestId, ...data.timing });
       if (inflight.current === controller) inflight.current = null;
       setPreparing(null);
@@ -1060,7 +1076,10 @@ export default function Page() {
           </section>
           <section>
             <h3>Waar komt het nieuws vandaan?</h3>
-            <p>Nova gebruikt alleen het bericht dat je ziet.</p>
+            <p>
+              Nova vertelt alleen wat in de nieuwsberichten van vandaag staat.
+              Vraag je naar een ander bericht, dan gaat Nova naar dat bericht.
+            </p>
             <p>
               Bij elk bericht staat de bron. Met ‘Bekijk bron’ lees je het hele
               bericht.

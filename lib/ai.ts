@@ -3,7 +3,8 @@ import { fallbackExplanation } from './fallback';
 import * as gemini from './gemini';
 import * as groq from './groq';
 import * as mistral from './mistral';
-import { buildPrompt, PROMPT_VERSION, SYSTEM, type Action, type Previous } from './prompt';
+import { buildPrompt, buildRoutePrompt, PROMPT_VERSION, ROUTE_SYSTEM, SYSTEM, type Action, type Previous } from './prompt';
+import { pickRoute, type Candidate } from './questions';
 import { cleanSpoken } from './spoken';
 import { pickHardWords, type HardWord } from './words';
 
@@ -20,6 +21,8 @@ export type Explanation = {
   attempts: gemini.Attempt[];
   // Moeilijke woorden in `spoken`, met uitleg (zie lib/words.ts). Leeg bij de terugval.
   words: HardWord[];
+  // Bij een vraag: ging die over dit bericht? (zie lib/questions.ts)
+  aboutArticle?: boolean;
 };
 
 // Op volgorde: Groq, Mistral, Gemini, maar alleen die met een sleutel in .env.local. Faalt de
@@ -73,7 +76,8 @@ export async function generateExplanation({
     const spoken = typeof parsed.spoken === 'string' ? cleanSpoken(parsed.spoken) : '';
     if (!spoken) throw new Error(`Onbruikbaar antwoord: ${text.slice(0, 200)}`);
     const words = pickHardWords(parsed.woorden, spoken, cleanSpoken);
-    return { spoken, mode: 'ai', model, promptVersion: PROMPT_VERSION, attempts, words };
+    const aboutArticle = parsed.overBericht !== false;
+    return { spoken, mode: 'ai', model, promptVersion: PROMPT_VERSION, attempts, words, aboutArticle };
   } catch (err) {
     console.error('[ai] taalmodel niet gebruikt, terugval op regels:', err instanceof Error ? err.message : err);
     return {
@@ -85,4 +89,12 @@ export async function generateExplanation({
       words: [],
     };
   }
+}
+
+// Over welk bericht van vandaag gaat een vraag? Een id uit de lijst, of null. Fouten gooien: dan
+// beweert Nova niets over het andere nieuws (zie lib/questions.ts).
+export async function routeQuestion(question: string, list: Candidate[]) {
+  const attempts: gemini.Attempt[] = [];
+  const { text } = await generateJson(ROUTE_SYSTEM, [{ role: 'user', content: buildRoutePrompt(question, list) }], attempts);
+  return { id: pickRoute(text, list), attempts };
 }

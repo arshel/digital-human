@@ -64,6 +64,8 @@ tests/                         node --test
 4. Het taalmodel (Qwen via Groq; Mistral of Gemini als reserve) krijgt de systeemprompt, de brontekst, de hulpnotities en de opdracht voor die knop, en geeft `{"spoken": "..."}` terug. De server haalt markdown, URL's, emoji en regieaanwijzingen weg.
 5. De pagina laat de presentator die tekst letterlijk uitspreken en toont dezelfde tekst als ondertiteling.
 
+**Een vraag over ander nieuws van vandaag** (lib/questions.ts): het taalmodel meldt bij het antwoord of de vraag over het bericht in beeld ging. Zo niet, dan kiest het taalmodel uit de titels en het begin van de berichten van vandaag het bericht waar de vraag over gaat, en Nova antwoordt uit dát bericht ("Dat gaat over een ander bericht van vandaag."). De pagina gaat naar dat bericht, zodat bron, datum en "Bekijk bron" bij het antwoord horen. Staat het nergens, dan zegt Nova dat eerlijk. Gewone vragen kosten zo geen extra tijd; een vraag over een ander bericht ongeveer 1 seconde extra.
+
 **Volgend bericht** stopt de lopende uitleg, breekt een lopende aanvraag af, wist de context van het vorige bericht en negeert een antwoord dat te laat binnenkomt. Snel dubbelklikken geeft één aanvraag. **Nog een keer** maakt geen nieuwe aanvraag.
 
 ### Inhoud vervangen
