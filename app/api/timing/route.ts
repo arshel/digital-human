@@ -38,7 +38,7 @@ export async function POST(req: Request) {
       ? 'verbinding bestond al'
       : `verbinden ${sec(at['connect-start'])} → ${sec(at.connected)}${body.stream ? ` (${code(body.stream)})` : ''}`,
     `speak ${sec(at['speak-sent'])} → geaccepteerd ${sec(at['speak-accepted'])}`,
-    `beeld ${sec(at.playing)}`,
+    `beeld ${sec(at.playing)}${body.video ? ` (${code(body.video)})` : ''}`,
     `geluid ${sec(at.audio)}`,
   ];
   if (closed.length) parts.push(`gesloten: ${closed.join(', ')}`);

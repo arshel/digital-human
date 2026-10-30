@@ -1,11 +1,14 @@
 "use client";
 
+import "./stage-stable.css";
+
 import {
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -61,6 +64,9 @@ type Fragment = {
   // Moeilijke woorden om aan te tikken (zie lib/words.ts).
   words: HardWord[];
 };
+
+// Van wachtbeeld naar live beeld: kort overvloeien in plaats van een harde wissel.
+const REST_FADE_MS = 450;
 
 type Problem = { message: string; retry?: () => void };
 type PanelName = "ask" | "source" | "help" | "access" | "news" | "dev";
@@ -136,6 +142,8 @@ export default function Page() {
   // vertellen was). `started`: de uitleg is hoorbaar begonnen.
   const aside = useRef<{ resume: { fragment: Fragment; from: number } | null; started: boolean } | null>(null);
   const [asideWord, setAsideWord] = useState<HardWord | null>(null);
+  // Het wachtbeeld is na het vervagen weg (scheelt een tweede video die blijft afspelen).
+  const [restGone, setRestGone] = useState(false);
   // Metingen per klik voor de ontwikkelserver (alleen getallen; zie app/api/timing).
   const cycleTiming = useRef(new CycleTiming());
   const sendTiming = useCallback((report: TimingReport | null) => {
@@ -310,6 +318,16 @@ export default function Page() {
     }
   }, [presenter.state]);
 
+  // Het live beeld van Anam is in beeld (of komt eraan): verbonden, spreekt of gepauzeerd.
+  const liveNow =
+    realAvatar &&
+    ["loading", "speaking", "paused", "ready"].includes(presenter.state);
+  useEffect(() => {
+    if (!liveNow) return setRestGone(false);
+    const t = setTimeout(() => setRestGone(true), REST_FADE_MS + 100);
+    return () => clearTimeout(t);
+  }, [liveNow]);
+
   // Na de uitleg van een woord: verder waar Nova was, als dat bericht nog in beeld is.
   useEffect(() => {
     const current = aside.current;
@@ -455,9 +473,13 @@ export default function Page() {
   const published = article && nlDate(article.published);
   const updated = article && nlDate(article.updated);
   const showVideo = realAvatar;
-  const live =
-    showVideo &&
-    ["loading", "speaking", "paused", "ready"].includes(presenter.state);
+  const live = liveNow;
+  // Het wachtbeeld vervaagt in REST_FADE_MS zodra het live beeld er is, en gaat daarna weg.
+  const restFade: CSSProperties = {
+    opacity: live ? 0 : 1,
+    transition: `opacity ${REST_FADE_MS}ms ease`,
+    pointerEvents: "none",
+  };
   const timingLabel =
     presenter.timing === "sentence"
       ? "Ondertiteling"
@@ -513,19 +535,21 @@ export default function Page() {
               <video
                 ref={presenter.video}
                 className="frame-media"
-                hidden={!live}
                 autoPlay
                 playsInline
                 disablePictureInPicture
+                aria-hidden={!live}
                 aria-label="Nova, de AI-presentator"
               />
             )}
             {/* Vóór Start: de wachtvideo van de avatar (een gewoon videobestand, geen stream en geen
-                kosten), zodat de presentator al beweegt. Anders de foto. */}
-            {!live &&
+                kosten), zodat de presentator al beweegt. Anders de foto. Die ligt óver het live
+                beeld en vervaagt pas als dat er is: geen harde wissel tussen bestand en stream. */}
+            {!restGone &&
               (config?.idleVideo ? (
                 <video
                   className="frame-media"
+                  style={restFade}
                   src={config.idleVideo}
                   poster={config.poster ?? undefined}
                   autoPlay
@@ -533,15 +557,17 @@ export default function Page() {
                   loop
                   playsInline
                   disablePictureInPicture
+                  aria-hidden={live}
                   aria-label="Nova, de AI-presentator"
                 />
               ) : config?.poster ? (
                 <img
                   className="frame-media"
+                  style={restFade}
                   src={config.poster}
-                  alt="Nova, de AI-presentator"
+                  alt={live ? "" : "Nova, de AI-presentator"}
                 />
-              ) : (
+              ) : live ? null : (
                 <div className="frame-empty" aria-hidden="true">
                   <span className="placeholder-mark">Nova</span>
                   <span>Je nieuws, helder verteld.</span>
@@ -1201,7 +1227,7 @@ function MicButton({
 }
 
 // Een zin met moeilijke woorden als link: aantikken en Nova legt het woord uit.
-const WORD_LINK: React.CSSProperties = {
+const WORD_LINK: CSSProperties = {
   font: "inherit",
   color: "inherit",
   background: "none",

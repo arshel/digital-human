@@ -167,7 +167,8 @@ export class AnamPresenter implements Presenter {
       if (this.building === client) this.building = null;
       if (!current()) return this.abandon(client);
       this.client = client;
-      this.mark('connected', { detail: 'anam' });
+      // Met de werkelijke resolutie van de stream: die kan lager zijn dan het wachtbeeld.
+      this.mark('connected', { detail: `anam/${this.size()}` });
       this.events.onState('ready');
       return true;
     } catch (err) {
@@ -178,6 +179,10 @@ export class AnamPresenter implements Presenter {
       this.events.onState('error', err instanceof Error && err.message.startsWith('De ') ? err.message : 'Verbinding mislukt. Probeer opnieuw.');
       throw err;
     }
+  }
+
+  private size() {
+    return `${this.video.videoWidth || 0}x${this.video.videoHeight || 0}`;
   }
 
   private abandon(client: AnamClient) {
@@ -300,7 +305,7 @@ export class AnamPresenter implements Presenter {
     this.talking = true;
     this.requested = false;
     this.sentence = -1;
-    this.mark('playing', { cycle: this.cycle });
+    this.mark('playing', { cycle: this.cycle, detail: this.size() });
     // Anam meldt geen apart "geluid hoorbaar"; het eerste transcriptstuk valt daarmee samen.
     this.mark('audio', { cycle: this.cycle });
     this.follow();

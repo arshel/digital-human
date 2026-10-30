@@ -1,0 +1,25 @@
+/* Nova mag niet verspringen als na Start tekst verschijnt.
+
+   Onder 60rem stond het beeld in de ruimte die overbleef boven de tekst (rij minmax(0, 1fr) boven
+   een rij 'auto'). Na Start groeit de tekst eronder (en op mobiel komt de ondertitelbalk onder het
+   beeld), dus kromp Nova of schoof ze omhoog: gemeten 512 → 486 px op 900 breed, 28 px omhoog op
+   390 breed. Nu heeft het beeldvak een vaste maat, de verhouding van de avatar (3:2) en hooguit de
+   helft van het scherm, en scrolt de tekst eronder als die niet past.
+
+   Los van app/globals.css gehouden; vanaf 60rem (tekst ernaast) verandert er niets. */
+@media (max-width: 59.99rem) {
+  .layout {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .frame {
+    flex: none;
+    height: auto;
+    min-height: 0;
+    aspect-ratio: 3 / 2;
+    max-height: 50dvh;
+  }
+  .reader {
+    min-height: 0;
+    overflow-y: auto;
+  }
+}

@@ -16,6 +16,7 @@ export type TimingReport = {
   action: string;
   steps: Partial<Record<Step, number>>;
   stream?: string;
+  video?: string; // resolutie van het live beeld toen Nova begon te praten
   closed: string[];
   replaced: boolean;
   server?: ServerTiming;
@@ -51,6 +52,7 @@ export class CycleTiming {
       return null;
     }
     if (e.step === 'connected' && e.detail) c.stream = e.detail;
+    if (e.step === 'playing' && e.detail) c.video ??= e.detail;
     c.steps[e.step] ??= e.at - c.start;
     return e.step === 'audio' ? 'done' : null;
   }
