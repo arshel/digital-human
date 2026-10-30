@@ -1,80 +1,66 @@
-/* Nova: schermvullende presentator met de bediening onderin.
-   Leesbaarheid voor laaggeletterde jongvolwassenen: Verdana (of Helvetica), nergens kleiner
-   dan 16 px (1rem), regelafstand minstens 1,5, tekst links uitgelijnd, zwart op wit. Alle
-   maten in rem, zodat een grotere tekstinstelling in de browser overal doorwerkt. */
-
+/* Visual foundation: Nova design board. Warm paper, navy type, blue controls.
+   System fonts, visible keyboard focus, rem sizes and natural page scrolling. */
 :root {
-  --ink: #000;
-  --paper: #fff;
-  --muted: #444; /* alleen de ondertitel naast de naam; 9,7:1 op wit */
-  --pill: #ececec;
-  --divider: #dedede;
-  --border: #4d4d4d; /* randen van knoppen en velden: 8:1 op wit */
-  --accent: #102a5c; /* donkerblauw: de belangrijkste actie */
-  --accent-hover: #0a1d42;
-  --spoken: #e3eaf6; /* lichtblauw achter de zin die klinkt; zwarte tekst erop 17:1 */
-  --studio: #1c2940; /* rustige, donkerblauwe studio achter de presentator */
-  --studio-light: #4a5d7e;
-  --focus: #102a5c;
-  --shadow: 0 0.125rem 0.75rem rgba(0, 0, 0, 0.25);
-  --reading-lines: 3; /* zoveel regels toont het meeleesvak voordat het scrolt */
+  --ink: #101b37;
+  --muted: #62697b;
+  --paper: #fffcf8;
+  --page: #eeece7;
+  --frame: #cbd7d4;
+  --line: #dedbd5;
+  --border: #a6a7ae;
+  --accent: #0754df;
+  --accent-strong: #003da8;
+  --accent-soft: #edf3ff;
+  --problem: #9b1c1c;
+  --problem-soft: #fff0ed;
+  --focus: #0754df;
+  --dev: #f1eee7;
 }
-
+:root[data-text-size="large"] {
+  font-size: 18px;
+}
 * {
   box-sizing: border-box;
 }
-
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
-
 html,
 body {
   margin: 0;
   padding: 0;
 }
-
 body {
-  background: var(--paper);
+  background: var(--page);
   color: var(--ink);
-  font-family: Verdana, Helvetica, Arial, sans-serif;
+  font-family: Arial, Helvetica, sans-serif;
   font-size: 1rem;
   line-height: 1.5;
-  text-align: left;
 }
-
 h1,
 h2,
 h3,
 p,
-ul {
+dl,
+dd {
   margin: 0;
 }
-
-ul {
-  padding: 0;
-  list-style: none;
-}
-
 button,
 input {
   font: inherit;
   color: inherit;
-  line-height: 1.5;
 }
-
-/* Twee ringen (wit en donkerblauw): zichtbaar op wit, op knoppen én op het videobeeld. */
+button {
+  touch-action: manipulation;
+}
 :focus-visible {
   outline: 3px solid var(--focus);
-  outline-offset: 2px;
-  box-shadow: 0 0 0 2px var(--paper);
+  outline-offset: 4px;
 }
-
 html:has(dialog[open]) {
   overflow: hidden;
 }
-
 .sr-only {
   position: absolute;
   width: 1px;
@@ -82,497 +68,553 @@ html:has(dialog[open]) {
   padding: 0;
   margin: -1px;
   overflow: hidden;
-  clip: rect(0 0 0 0);
+  clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
 }
-
-/* ---------- knoppen ---------- */
-
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 0.5rem;
-  min-height: 3rem;
-  padding: 0.5rem 1rem;
-  border: 2px solid var(--border);
-  border-radius: 0.5rem;
+  gap: 0.7rem;
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
   background: var(--paper);
-  color: var(--ink);
-  font-weight: 700;
+  font-size: 0.875rem;
+  font-weight: 600;
   text-align: left;
   cursor: pointer;
-  touch-action: manipulation;
 }
-
 .btn svg,
-.source-link svg,
 .link svg {
   flex: none;
-  width: 1.5em;
-  height: 1.5em;
+  width: 1.3rem;
+  height: 1.3rem;
 }
-
-@media (hover: hover) {
-  .btn:hover:not([aria-disabled='true']) {
-    background: #f0f0f0;
-  }
-
-  .btn-primary:hover:not([aria-disabled='true']) {
-    border-color: var(--accent-hover);
-    background: var(--accent-hover);
-  }
-
-  .btn-pill:hover:not([aria-disabled='true']) {
-    background: #dcdcdc;
-  }
-}
-
 .btn-primary {
-  border-color: var(--accent);
   background: var(--accent);
-  color: var(--paper);
+  color: #fff;
+  border-color: var(--accent);
 }
-
-.btn-pill {
-  min-height: 2.75rem;
-  padding: 0 1rem;
-  border: 0;
-  border-radius: 999px;
-  background: var(--pill);
+.btn-quiet {
+  background: transparent;
+  border-color: transparent;
   font-weight: 400;
 }
-
-.btn-quiet {
-  border-color: transparent;
-  background: transparent;
-}
-
-.btn[aria-disabled='true'] {
-  opacity: 0.45;
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.48;
   cursor: not-allowed;
 }
-
-/* ---------- pagina ---------- */
-
-.app {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
+@media (hover: hover) {
+  .btn:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--accent-soft);
+  }
+  .btn-primary:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--accent-strong);
+  }
+  .story-card:hover {
+    background: var(--accent-soft);
+    border-color: #a5bce8;
+  }
 }
-
+.app {
+  width: min(calc(100% - 3rem), 90rem);
+  margin: 1.5rem auto;
+  overflow: clip;
+  background: var(--paper);
+  border: 1px solid #c3c4ca;
+  border-radius: 1.5rem;
+  box-shadow: 0 4px 18px #15203b08;
+}
 .header {
-  flex: none;
+  min-height: 5rem;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.375rem 1rem;
-  min-height: 3.5rem;
-  padding: max(0.375rem, env(safe-area-inset-top)) max(1.5rem, env(safe-area-inset-right)) 0.375rem
-    max(1.5rem, env(safe-area-inset-left));
-  background: #fafafa;
-  border-bottom: 1px solid var(--divider);
+  gap: 1.5rem;
+  padding: 1rem 2rem;
+  background: var(--paper);
 }
-
 .brand {
   display: flex;
-  align-items: baseline;
-  gap: 1rem;
-  font-size: 1rem;
-  font-weight: 400;
+  align-items: center;
+  gap: 1.25rem;
 }
-
 .brand-name {
-  font-size: 1.75rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: 2.5rem;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.07em;
 }
-
 .brand-tagline {
-  color: var(--muted);
+  padding-left: 1.25rem;
+  border-left: 1px solid var(--line);
+  font-size: 0.9rem;
+  color: #1b3667;
+  font-weight: 500;
 }
-
-.header-actions {
+.header-tools {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.6rem;
 }
-
-/* ---------- presentator ---------- */
-
-/* Het vlak vult de rest van het scherm. Minstens zo hoog dat tekst, knoppen en een stuk beeld
-   passen (--overlays wordt gemeten); past dat niet, dan scrolt de pagina. */
+.header-tool {
+  border-color: transparent;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.header-tool svg {
+  width: 1.6rem;
+  height: 1.6rem;
+}
+.header-tool[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: #a5bce8;
+}
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
 .stage {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: calc(var(--overlays, 0px) + 8rem);
-  overflow: hidden;
-  /* Onze eigen achtergrond, zolang er geen beeld is: een rustige studio in donkerblauw, met wat
-     licht achter de presentator. Geen beweging, geen tekst. Het decor in de video zelf (een
-     kantoor) hoort bij de avatar in HeyGen; dat vervangen we niet met CSS. */
-  background: radial-gradient(ellipse 55% 65% at 50% 40%, var(--studio-light), transparent 75%), var(--studio);
+  grid-column: 1 / -1;
+  min-width: 0;
 }
-
-.presenter {
+.frame {
+  position: relative;
+  width: 100%;
+  height: clamp(24rem, 49vw, 35rem);
+  overflow: hidden;
+  background: var(--frame);
+}
+.frame-media {
   position: absolute;
   inset: 0;
-  overflow: hidden;
-}
-
-/* Eén stilstaand, vervaagd beeld van de achtergrond van de avatar, voor de randen naast de
-   video. Geen bewegende achtergrond. */
-.presenter-backdrop {
-  position: absolute;
-  inset: -3rem;
-  background: center / 100% 100% no-repeat;
-  filter: blur(1.5rem);
-  opacity: 0;
-}
-
-.presenter.has-backdrop .presenter-backdrop {
-  opacity: 1;
-}
-
-/* Positie en maat rekent AnchorStage uit, in de verhouding van de stream zelf. contain houdt
-   het hele beeld zichtbaar: niets afgesneden en niets uitgerekt, ook niet als de stream een
-   andere verhouding blijkt te hebben dan verwacht. Geen transform-vergroting. */
-.presenter-video {
-  position: absolute;
-  left: 0;
-  top: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
   object-position: 50% 50%;
 }
-
-/* Zachte randen, zodat de video zonder harde naad in de achtergrond overloopt. */
-.presenter.has-backdrop .presenter-video {
-  -webkit-mask-image:
-    linear-gradient(to right, transparent, #000 4%, #000 96%, transparent),
-    linear-gradient(to bottom, transparent, #000 4%, #000 96%, transparent);
-  -webkit-mask-composite: source-in;
-  mask-image:
-    linear-gradient(to right, transparent, #000 4%, #000 96%, transparent),
-    linear-gradient(to bottom, transparent, #000 4%, #000 96%, transparent);
-  mask-composite: intersect;
+.frame-media[hidden] {
+  display: none;
 }
-
-.presenter-placeholder {
+.frame-empty {
   position: absolute;
-  left: 50%;
-  top: 40%;
-  width: 8rem;
-  height: 8rem;
-  transform: translate(-50%, -50%);
-  display: grid;
-  place-items: center;
-  border: 2px solid rgba(255, 255, 255, 0.6);
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--paper);
-  font-size: 3.5rem;
-  font-weight: 700;
-  line-height: 1.5;
-}
-
-.presenter-problem {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  max-width: 24rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.5rem;
-  background: var(--paper);
-  color: #a3221a;
-}
-
-/* ---------- onderwerp linksboven ---------- */
-
-.topic {
-  position: absolute;
-  z-index: 2;
-  top: 1rem;
-  left: max(1.5rem, env(safe-area-inset-left));
-  max-width: min(26rem, calc(100% - 3rem));
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.5rem;
-}
-
-.badge,
-.topic-title,
-.topic-note {
-  padding: 0.25rem 0.75rem;
-  border-radius: 0.5rem;
-  background: var(--paper);
-  color: var(--ink);
-  box-shadow: var(--shadow);
-}
-
-.topic-title {
-  padding-block: 0.375rem;
-  font-size: 1.25rem;
-  font-weight: 700;
-}
-
-/* Liggend scherm: het onderwerp blijft links van het gezicht (dat begint op ongeveer 36% van de
-   breedte), zodat de presentator zo groot mogelijk kan. */
-@media (orientation: landscape) {
-  .topic {
-    max-width: min(26rem, calc(36% - 2.25rem));
-  }
-}
-
-/* ---------- melding over het beeld (avatar start of werkt niet) ---------- */
-
-.stage-status {
-  position: absolute;
-  z-index: 2;
-  left: 50%;
-  transform: translate(-50%, calc(-100% - 0.75rem));
-  width: min(calc(100% - 2rem), 28rem);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
-  padding: 1rem 1.25rem;
-  border-radius: 0.75rem;
-  background: var(--paper);
-  color: var(--ink);
-  box-shadow: var(--shadow);
-}
-
-.stage-status .btn {
-  margin-top: 0.5rem;
-}
-
-/* ---------- meeleesvak en bediening onderin ---------- */
-
-.dock {
-  position: absolute;
-  z-index: 2;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0 max(1.5rem, env(safe-area-inset-right)) calc(1rem + env(safe-area-inset-bottom, 0px))
-    max(1.5rem, env(safe-area-inset-left));
-  pointer-events: none;
+  justify-content: center;
+  gap: 0.7rem;
+  color: #2d4d5d;
 }
-
-.dock > * {
-  pointer-events: auto;
+.placeholder-mark {
+  font-size: 5rem;
+  line-height: 1;
+  letter-spacing: -0.07em;
+  font-weight: 800;
 }
-
-/* Vaste plek voor het meeleesvak: zo hoog als het vak op zijn grootst (de regels, de binnenrand
-   en "Toon meer"). Het witte vak zelf is zo hoog als de tekst en staat onderin, direct boven de
-   knoppen; erboven blijft het beeld gewoon zichtbaar. Zo verspringen de presentator en de knoppen
-   niet als een antwoord korter of langer is. */
-.readalong-slot {
-  width: min(100%, 42.5rem);
-  min-height: calc(var(--reading-lines) * 1.125rem * 1.5 + 0.75rem + 2.75rem + 0.25rem);
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  pointer-events: none;
-}
-
-/* Wit, dekkend vlak met zwarte tekst. Links zit een deel van de binnenrand in het tekstvak, voor
-   de streep bij de zin die klinkt. */
-.readalong {
-  padding: 0.75rem 1rem 0.75rem 0.375rem;
-  border-radius: 0.625rem;
-  background: var(--paper);
-  color: var(--ink);
-  box-shadow: var(--shadow);
-  pointer-events: auto;
-}
-
-.readalong-text {
-  position: relative;
-  max-height: calc(var(--reading-lines) * 1.5em);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding-left: 0.625rem;
-  font-size: 1.125rem;
-}
-
-.readalong-text[data-expanded] {
-  max-height: none;
-  overflow: visible;
-}
-
-.readalong-text p {
-  position: relative;
-}
-
-/* De zin die nu klinkt: lichtblauw, met een donkerblauwe streep ervoor (niet alleen kleur). */
-.readalong-text .is-spoken {
-  background: var(--spoken);
-}
-
-.readalong-text .is-spoken::before {
-  content: '';
+.ai-label,
+.sim-label {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -0.5rem;
-  width: 0.25rem;
-  border-radius: 0.125rem;
+  top: 1rem;
+  padding: 0.35rem 0.65rem;
+  background: #fffcf8ec;
+  color: var(--ink);
+  font-size: 0.6875rem;
+  border-radius: 2rem;
+}
+.ai-label {
+  left: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.on-air-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
   background: var(--accent);
 }
-
-/* De knoppen onder de tekst ("Toon meer", "Opnieuw proberen") staan direct onder de laatste regel;
-   de binnenrand eronder is dan smaller, omdat de knop zelf al ruimte om zijn tekst heeft. */
-.readalong:has(.readalong-foot) {
-  padding-bottom: 0.25rem;
+.sim-label {
+  right: 1.25rem;
+  color: #3d485b;
 }
-
-.readalong-foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  padding-left: 0.625rem;
-}
-
-.readalong-more {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  min-height: 2.75rem;
-  margin-left: auto;
-  padding: 0 0.5rem;
-  border: 0;
-  border-radius: 0.5rem;
-  background: none;
-  color: var(--accent);
+.frame-headline,
+.overlay-caption {
+  position: absolute;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(52rem, calc(100% - 4rem));
+  padding: 0.75rem 1.35rem;
+  border-radius: 0.7rem;
+  background: #0c1527ef;
+  color: #fff;
+  font-size: clamp(1.4rem, 2.5vw, 2.15rem);
   font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
-  cursor: pointer;
+  line-height: 1.25;
+  text-align: center;
+  text-wrap: balance;
 }
-
-.readalong-more svg {
-  flex: none;
-  width: 1.25rem;
-  height: 1.25rem;
+.stage-toolbar {
+  min-height: 4.4rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.65rem 1.5rem;
+  border-bottom: 1px solid var(--line);
 }
-
+.playback {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.playback .btn {
+  font-size: 0.8125rem;
+}
 .status {
   display: flex;
   align-items: center;
-  gap: 0.625rem;
+  gap: 0.5rem;
+  flex: 1;
+  font-size: 0.75rem;
+  color: var(--muted);
+  min-width: 7rem;
 }
-
+.status-problem {
+  color: var(--problem);
+}
 .pulse {
   flex: none;
-  width: 0.75rem;
-  height: 0.75rem;
-  border-radius: 50%;
+  width: 0.45rem;
+  height: 0.45rem;
   background: var(--accent);
+  border-radius: 50%;
   animation: pulse 1.6s ease-in-out infinite;
 }
-
 @keyframes pulse {
   50% {
     opacity: 0.3;
   }
 }
-
-/* Afspelen links, daarna de drie acties en de bron. Op een smal scherm lopen ze over meer rijen. */
-.controls {
-  width: min(100%, 76rem);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem 2rem;
+.captions-toggle {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+  padding: 0.45rem;
 }
-
-.control-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.5rem 0.75rem;
-}
-
-/* Pictogram naast het label. Geen vaste hoogte: bij grotere tekst groeit de knop mee. */
-.control {
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border: 0;
-  border-radius: 0.625rem;
-  box-shadow: var(--shadow);
-}
-
-.btn.control svg,
-.source-link svg {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-/* De afspeelknop: een donkerblauwe rand en dito pictogram, zodat hij als afspelen herkenbaar is. */
-.control-play {
-  border: 2px solid var(--accent);
-  padding-block: calc(0.75rem - 2px);
-}
-
-.control-play svg {
+.captions-toggle[aria-pressed="true"] svg {
   color: var(--accent);
 }
-
-.control-variants {
+.retry {
+  margin: 0.5rem 1.5rem 1rem;
+}
+.today {
+  min-width: 0;
+  padding: 1.5rem 1.75rem 1.75rem;
+}
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.section-heading h2 {
+  font-size: 1.25rem;
+  letter-spacing: -0.03em;
+}
+.section-heading > span {
+  font-size: 0.6875rem;
+  color: var(--muted);
+}
+.story-list {
   display: grid;
-}
-
-.control-variants > * {
-  grid-area: 1 / 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-}
-
-.control-variants > [aria-hidden] {
-  visibility: hidden;
-}
-
-.control-start {
-  justify-content: center;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
   gap: 0.75rem;
-  min-width: min(100%, 16rem);
-  padding-inline: 2rem;
-  font-size: 1.125rem;
+  max-height: 30rem;
+  overflow: auto;
+  padding: 0.25rem;
+  margin: -0.25rem;
 }
-
-.source-link {
+.story-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  gap: 0.55rem;
+  padding: 0.45rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.65rem;
+  text-align: left;
+  cursor: pointer;
+}
+.story-card.is-selected {
+  border-color: #a4bdf0;
+  background: #edf3ff;
+}
+.story-art {
+  width: 100%;
+  aspect-ratio: 1.65;
+  padding: 1rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  color: #315c7c;
+  background: #e0e8ec;
+  border-radius: 0.45rem;
+}
+.story-art > svg {
+  width: 2rem;
+  height: 2rem;
+  stroke-width: 1.25;
+}
+.story-art > span {
+  font-size: 2rem;
+  line-height: 1;
+  letter-spacing: -0.06em;
+  opacity: 0.6;
+}
+.story-card:nth-child(3n + 2) .story-art {
+  color: #546456;
+  background: #e2e7dc;
+}
+.story-card:nth-child(3n) .story-art {
+  color: #7a5f4e;
+  background: #eee2d5;
+}
+.story-publisher {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.15rem 0.3rem;
+  width: 100%;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.story-publisher > span {
+  font-size: 0.6rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+.story-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.015em;
+}
+.reader {
+  min-width: 0;
+  padding: 1.25rem 1.75rem 1.5rem 1.25rem;
+  border-left: 1px solid var(--line);
+}
+.reading-card {
+  padding: 1rem 1.15rem;
+  background: #f0ede7;
+  border-radius: 0.8rem;
+  font-size: 1.0625rem;
+  line-height: 1.45;
+}
+.reading-label {
+  margin-bottom: 0.35rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.captions-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.captions-text p {
+  display: inline;
+}
+.captions-text p::after {
+  content: " ";
+}
+.captions-text.is-expanded {
+  display: block;
+  max-height: 18rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.captions-text.is-expanded p {
+  display: block;
+  padding: 0.35rem 0.5rem;
+  border-left: 2px solid transparent;
+}
+.captions-text.is-expanded .is-spoken {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+.transcript-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
   min-height: 2.75rem;
-  padding: 0.25rem 1rem;
+  margin-top: 0.2rem;
+  padding: 0.4rem 0 0;
+  background: none;
   border: 0;
-  border-radius: 999px;
-  background: var(--paper);
-  color: var(--ink);
-  font-weight: 700;
+  color: #414d64;
+  font-size: 0.75rem;
   text-decoration: underline;
   text-underline-offset: 0.2em;
   cursor: pointer;
-  box-shadow: var(--shadow);
 }
-
-/* ---------- panelen ---------- */
-
+.transcript-toggle svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+.transcript-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.captions-note {
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+}
+.controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+.controls .btn {
+  min-height: 3.5rem;
+  padding: 0.75rem 0.85rem;
+  line-height: 1.3;
+  font-size: 0.8125rem;
+  box-shadow: 0 2px 3px #14203906;
+}
+.controls .btn svg {
+  width: 1.6rem;
+  height: 1.6rem;
+  color: var(--accent);
+}
+.controls .control-next svg {
+  color: #fff;
+}
+.ask-link {
+  border-color: transparent;
+  background: transparent;
+  font-size: 0.75rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.15rem;
+  font-weight: 400;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.ask-link svg {
+  width: 1rem;
+  height: 1rem;
+}
+.source-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.8rem;
+  font-size: 0.6875rem;
+}
+.source-line > p:first-child {
+  flex: 1 1 100%;
+}
+.btn-source {
+  font-size: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  background: #f5f7fc;
+}
+.btn-source svg {
+  width: 1rem;
+  height: 1rem;
+}
+.ai-note {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.625rem;
+}
+.ai-note > span {
+  font-size: 1.3rem;
+}
+.site-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1.75rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+.site-footer .btn {
+  padding: 0.3rem 0;
+  font-size: 0.6875rem;
+  min-height: 2.75rem;
+}
+.access-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.access-settings .btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: #a5bce8;
+}
+.dev-container {
+  padding: 0 1.75rem;
+}
+.dev {
+  border-top: 1px solid var(--line);
+  padding: 0.5rem 0;
+  font-size: 0.75rem;
+}
+.dev summary {
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  cursor: pointer;
+}
+.dev dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 1rem;
+  overflow-wrap: anywhere;
+  margin-bottom: 0.75rem;
+}
+.dev dt {
+  color: var(--muted);
+}
+.dev-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+}
+.dev-actions .btn {
+  font-size: 0.75rem;
+}
+.dev-actions .btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
 .panel {
   width: min(calc(100% - 2rem), 36rem);
   max-width: none;
@@ -584,27 +626,11 @@ html:has(dialog[open]) {
   border-radius: 0.75rem;
   background: var(--paper);
   color: var(--ink);
-  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.3);
 }
 
 .panel::backdrop {
-  background: rgba(0, 0, 0, 0.45);
-}
-
-/* Compact paneel onderin, over de bediening heen: zo laag mogelijk, zodat het gezicht van
-   de presentator zichtbaar blijft. */
-.panel-compact {
-  width: min(calc(100% - 2rem), 44rem);
-  margin-bottom: max(1.5rem, env(safe-area-inset-bottom));
-}
-
-.panel-compact .options {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
-}
-
-.panel-compact::backdrop {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.4);
 }
 
 .panel-body {
@@ -625,40 +651,11 @@ html:has(dialog[open]) {
 }
 
 .panel-head h2 {
-  font-size: 1.5rem;
+  font-size: 1.375rem;
 }
 
-.options,
-.stories {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-
-.option,
-.story {
-  width: 100%;
-  min-height: 3.5rem;
-}
-
-.story {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
-  font-weight: 400;
-}
-
-.story strong {
-  font-weight: 700;
-}
-
-.story[aria-current='true'] {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 2px var(--accent);
-}
-
-.ask-form {
+.ask-form,
+.source {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -683,22 +680,6 @@ html:has(dialog[open]) {
   margin-top: 0.5rem;
 }
 
-.sources {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  margin-block: 0.25rem 0.5rem;
-}
-
-.sources li {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--divider);
-}
-
 .link {
   display: inline-flex;
   align-items: center;
@@ -720,101 +701,773 @@ html:has(dialog[open]) {
   margin-bottom: 0.25rem;
   font-size: 1.125rem;
 }
-
-/* ---------- telefoon ---------- */
-
-@media (max-width: 40rem) {
+@media (max-width: 64rem) {
+  .app {
+    width: calc(100% - 2rem);
+    margin: 1rem auto;
+  }
   .header {
-    padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
+    padding: 1rem 1.25rem;
   }
-
-  .header {
-    column-gap: 0.5rem;
-  }
-
-  /* Zo past de bovenbalk op een telefoon van 390 px breed op één rij. */
-  .brand-name {
-    font-size: 1.375rem;
-  }
-
   .brand-tagline {
+    font-size: 0.75rem;
+  }
+  .header-tool span {
     display: none;
   }
-
-  .btn-pill {
-    padding: 0 0.625rem;
+  .header-tool {
+    width: 2.75rem;
+    padding: 0.5rem;
+    border-color: var(--line);
+    justify-content: center;
+    border-radius: 50%;
   }
-
-  .topic {
-    top: 0.75rem;
-    left: max(1rem, env(safe-area-inset-left));
-    right: max(1rem, env(safe-area-inset-right));
-    max-width: none;
+  .today {
+    padding: 1.25rem;
   }
-
-  .topic-title {
-    font-size: 1.125rem;
+  .reader {
+    padding: 1.25rem;
   }
-
-  .dock {
-    padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
+  .story-list {
+    gap: 0.35rem;
   }
-
-  .readalong-slot {
+  .story-art {
+    padding: 0.5rem;
+  }
+  .story-title {
+    font-size: 0.8125rem;
+  }
+}
+@media (max-width: 46rem) {
+  .app {
     width: 100%;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
-
-  /* Twee kolommen: afspelen en "Stel een vraag", daaronder "Extra uitleg" en "Volgende
-     onderwerp". Een label mag over twee regels. Is een kolom te smal voor het langste woord
-     ("onderwerp"), zoals op 320 px of met grote tekst, dan één kolom. */
+  .header {
+    padding: max(0.9rem, env(safe-area-inset-top)) 1rem 0.9rem;
+    min-height: 5rem;
+    gap: 0.75rem;
+  }
+  .brand {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  .brand-name {
+    font-size: 1.75rem;
+  }
+  .brand-tagline {
+    padding: 0;
+    border: 0;
+    font-size: 0.6875rem;
+  }
+  .header-tools {
+    gap: 0.45rem;
+  }
+  .header-tool {
+    width: 2.6rem;
+    min-height: 2.75rem;
+    padding: 0.5rem;
+  }
+  .header-tool svg {
+    width: 1.4rem;
+    height: 1.4rem;
+  }
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .frame {
+    height: clamp(22rem, 100vw, 30rem);
+  }
+  .frame-media {
+    object-fit: cover;
+    object-position: 50% 30%;
+  }
+  .frame-headline,
+  .overlay-caption {
+    bottom: 1rem;
+    max-width: calc(100% - 1.5rem);
+    width: calc(100% - 1.5rem);
+    padding: 0.65rem 0.8rem;
+    font-size: 1.375rem;
+    text-align: left;
+    border-radius: 0.65rem;
+  }
+  .ai-label,
+  .sim-label {
+    top: 0.65rem;
+    font-size: 0.625rem;
+    padding: 0.25rem 0.5rem;
+  }
+  .ai-label {
+    left: 0.75rem;
+  }
+  .sim-label {
+    right: 0.75rem;
+  }
+  .stage-toolbar {
+    padding: 0.6rem 0.75rem;
+    gap: 0.3rem 0.5rem;
+  }
+  .playback {
+    flex: 1;
+    gap: 0.15rem;
+  }
+  .playback .btn {
+    padding: 0.6rem 0.7rem;
+    font-size: 0.75rem;
+  }
+  .status {
+    order: 3;
+    flex: 1 1 100%;
+    min-height: 1.5rem;
+    font-size: 0.6875rem;
+  }
+  .captions-toggle span {
+    display: none;
+  }
+  .captions-toggle {
+    width: 2.75rem;
+    justify-content: center;
+  }
+  .reader {
+    grid-row: 2;
+    border-left: 0;
+    padding: 0.9rem 0.75rem 1.25rem;
+  }
+  .reading-card {
+    padding: 0.8rem 1rem;
+    font-size: 1rem;
+  }
   .controls {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.75rem), 1fr));
-    align-items: stretch;
     gap: 0.5rem;
   }
-
-  .control-actions {
-    display: contents;
+  .controls .btn {
+    font-size: 0.8125rem;
+    padding: 0.75rem 0.7rem;
+    min-height: 3.75rem;
+    gap: 0.6rem;
   }
-
-  .control {
-    justify-content: center;
-    padding-inline: 0.75rem;
+  .controls .btn svg {
+    width: 1.4rem;
+    height: 1.4rem;
   }
-
-  .control-start,
-  .source-link,
-  .controls:not([data-playback]) .control-next {
-    grid-column: 1 / -1;
+  .source-line {
+    font-size: 0.75rem;
   }
-
-  .source-link {
-    justify-self: center;
+  .today {
+    grid-row: 3;
+    border-top: 1px solid var(--line);
+    padding: 1.1rem 0.75rem 1.25rem;
   }
-
-  .panel,
-  .panel-compact {
+  .section-heading h2 {
+    font-size: 1.125rem;
+  }
+  .story-list {
+    display: flex;
+    overflow-x: auto;
+    max-height: none;
+    gap: 0.65rem;
+    scroll-snap-type: x proximity;
+    padding: 0.25rem;
+  }
+  .story-card {
+    flex: 0 0 9rem;
+    scroll-snap-align: start;
+  }
+  .story-title {
+    font-size: 0.8125rem;
+  }
+  .site-footer {
+    padding: 0.5rem 0.9rem max(0.5rem, env(safe-area-inset-bottom));
+  }
+  .site-footer > span {
+    max-width: 12rem;
+  }
+  .dev-container {
+    padding: 0 1rem;
+  }
+  .dev dl {
+    grid-template-columns: 1fr;
+  }
+  .panel {
     width: 100%;
     max-height: calc(100dvh - var(--keyboard, 0px) - 1rem);
     margin: auto 0 var(--keyboard, 0px);
     border-radius: 1rem 1rem 0 0;
   }
-
   .panel-body {
     padding: 1rem 1rem max(1.25rem, env(safe-area-inset-bottom));
   }
 }
-
-/* Laag scherm: het meeleesvak toont twee regels voordat het scrolt. */
-@media (max-height: 44rem) {
-  :root {
-    --reading-lines: 2;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .pulse {
     animation: none;
+  }
+}
+
+/* Keep the news player and its controls together within the available viewport.
+   Secondary reading and navigation open in dialogs. Short/zoomed screens may
+   still scroll naturally: content is never clipped to force a fit. */
+.app {
+  height: calc(100dvh - 2rem);
+  min-height: 38rem;
+  margin: 1rem auto;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.header {
+  min-height: 4.25rem;
+  padding: 0.75rem 1.5rem;
+}
+.brand-name {
+  font-size: 2.1rem;
+}
+.layout {
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+.stage {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.frame {
+  height: auto;
+  flex: 1;
+  min-height: 10rem;
+}
+.frame-headline,
+.overlay-caption {
+  bottom: 1rem;
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+}
+.stage-toolbar {
+  min-height: 3.5rem;
+  padding: 0.35rem 1rem;
+  gap: 0.7rem;
+  flex-shrink: 0;
+}
+.reader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 0.4rem 1.25rem;
+  padding: 0.75rem 1.5rem;
+  border-left: 0;
+}
+.reading-card {
+  padding: 0.65rem 0.9rem;
+  font-size: 1rem;
+}
+.reading-label {
+  margin-bottom: 0.2rem;
+}
+.captions-text {
+  -webkit-line-clamp: 2;
+}
+.transcript-toggle {
+  min-height: 2.75rem;
+  padding: 0.3rem 0;
+  margin: 0;
+}
+.controls {
+  margin: 0;
+  gap: 0.5rem;
+}
+.controls .btn {
+  min-height: 3rem;
+  padding: 0.5rem 0.75rem;
+}
+.ask-link {
+  grid-column: 2;
+  grid-row: 2;
+  padding: 0.35rem 0.15rem;
+  margin: 0;
+}
+.source-line {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 2.75rem;
+  padding: 0;
+  border: 0;
+  gap: 0.4rem 0.7rem;
+}
+.source-line > p:first-child {
+  flex: 1;
+  font-size: 0.625rem;
+}
+.ai-note {
+  display: none;
+}
+.site-footer {
+  padding: 0 1.5rem;
+  min-height: 2.75rem;
+}
+.footer-tools {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+.site-footer .btn {
+  font-size: 0.6875rem;
+}
+.site-footer .btn svg {
+  width: 1rem;
+  height: 1rem;
+}
+.panel .today {
+  padding: 0.25rem 0;
+}
+.panel .story-list {
+  max-height: none;
+}
+.panel .story-card {
+  flex-basis: 9rem;
+}
+.transcript-body {
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+.transcript-body p {
+  margin-bottom: 0.6rem;
+  padding: 0.3rem 0.6rem;
+  border-left: 2px solid transparent;
+}
+.transcript-body .is-spoken {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+@media (max-width: 46rem) {
+  .app {
+    height: 100dvh;
+    min-height: 34rem;
+    width: 100%;
+    margin: 0;
+  }
+  .header {
+    min-height: 4rem;
+    padding: 0.5rem 1rem;
+  }
+  .brand-name {
+    font-size: 1.65rem;
+  }
+  .reader {
+    grid-row: 2;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding: 0.5rem 0.75rem;
+    gap: 0.35rem 0.5rem;
+  }
+  .reading-card {
+    grid-column: 1 / -1;
+    font-size: 0.9375rem;
+    padding: 0.5rem 0.75rem;
+  }
+  .reading-label {
+    display: none;
+  }
+  .transcript-toggle {
+    min-height: 2.75rem;
+    font-size: 0.6875rem;
+  }
+  .controls {
+    grid-column: 1 / -1;
+  }
+  .controls .btn {
+    min-height: 3rem;
+    font-size: 0.75rem;
+    padding: 0.5rem 0.65rem;
+  }
+  .controls .btn svg {
+    width: 1.2rem;
+    height: 1.2rem;
+  }
+  .ask-link {
+    grid-row: 3;
+    grid-column: 1;
+    font-size: 0.6875rem;
+  }
+  .source-line {
+    grid-row: 3;
+    grid-column: 2;
+    justify-content: flex-end;
+  }
+  .source-line > p:first-child {
+    display: none;
+  }
+  .btn-source {
+    font-size: 0.6875rem;
+    min-height: 2.75rem;
+  }
+  .stage-toolbar {
+    padding: 0.3rem 0.75rem;
+    gap: 0 0.5rem;
+  }
+  .status {
+    min-height: 1.25rem;
+    line-height: 1.3;
+  }
+  .frame-media {
+    object-fit: contain;
+    object-position: center;
+  }
+  .frame-headline,
+  .overlay-caption {
+    bottom: 0.65rem;
+    font-size: 1.125rem;
+  }
+  .site-footer {
+    padding: 0 0.75rem max(0px, env(safe-area-inset-bottom));
+  }
+  .site-footer > span {
+    display: none;
+  }
+  .footer-tools {
+    width: 100%;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+}
+
+@media (max-width: 46rem) {
+  .frame {
+    min-height: 8rem;
+  }
+  .reader.has-overlay .reading-card {
+    padding-block: 0;
+  }
+  .reader.has-overlay .captions-text {
+    display: none;
+  }
+}
+
+/* Keep the entire portrait in view; extend its background separately. */
+.frame-media {
+  object-fit: contain;
+  object-position: center;
+}
+.stage {
+  position: relative;
+}
+.stage-title {
+  flex: none;
+  width: 100%;
+  padding: 0.5rem 1.5rem;
+  font-size: 1.1rem;
+  line-height: 1.3;
+  font-weight: 600;
+}
+.stage-title::first-line {
+  line-height: 1.3;
+}
+.stage-caption {
+  position: absolute;
+  z-index: 1;
+  bottom: 4.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(55ch, calc(100% - 3rem));
+  padding: 0.6rem 1rem;
+  background: #0c1527ef;
+  color: #fff;
+  border-radius: 0.65rem;
+  font-size: clamp(1.125rem, 1.8vw, 1.65rem);
+  line-height: 1.35;
+  text-align: center;
+  text-wrap: balance;
+}
+.stage-caption.is-reading {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-align: left;
+}
+.reading-card > p,
+.captions-text,
+.transcript-body {
+  max-width: 55ch;
+}
+.transcript-body {
+  margin-inline: auto;
+}
+.mobile-label,
+.mobile-transcript {
+  display: none;
+}
+@media (max-width: 46rem) {
+  .stage-title {
+    padding: 0.4rem 0.75rem;
+    font-size: 1rem;
+    max-width: 60ch;
+  }
+  .frame {
+    min-height: 5rem;
+  }
+  .frame-media {
+    object-fit: contain;
+    object-position: center;
+  }
+  .stage-caption {
+    position: static;
+    flex: none;
+    transform: none;
+    width: 100%;
+    max-width: 55ch;
+    margin: 0 auto;
+    padding: 0.45rem 0.75rem;
+    border-radius: 0;
+    font-size: 1rem;
+    line-height: 1.3;
+    text-align: left;
+    text-wrap: initial;
+  }
+  .stage-caption.is-reading {
+    -webkit-line-clamp: 2;
+  }
+  .reader .reading-card {
+    display: none;
+  }
+  .reader .controls {
+    grid-row: 1;
+  }
+  .reader .ask-link,
+  .reader .source-line {
+    grid-row: 2;
+  }
+  .reader .controls .btn {
+    min-height: 2.75rem;
+  }
+  .desktop-label {
+    display: none;
+  }
+  .mobile-label {
+    display: inline;
+  }
+  .mobile-transcript {
+    display: inline-flex;
+  }
+  .footer-tools {
+    gap: 0.25rem;
+  }
+  .footer-tools .btn {
+    white-space: nowrap;
+  }
+}
+@media (min-width: 60rem) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr) minmax(19rem, 25rem);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .stage {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .reader {
+    grid-column: 2;
+    grid-row: 1;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 0.75rem;
+    padding: 1rem;
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    border-left: 1px solid var(--line);
+  }
+  .reader .controls {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .reader .ask-link {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  .reader .source-line {
+    grid-column: 1;
+    grid-row: 4;
+  }
+}
+
+.presenter-background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Asking your own question is the primary conversation action. */
+.question-card {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid #b8cef8;
+  border-radius: 0.85rem;
+  background: var(--accent-soft);
+}
+.question-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.2rem;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+.question-card h2 svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--accent);
+}
+.question-intro {
+  margin: 0.45rem 0 0.8rem;
+  color: #3e5070;
+  font-size: 0.8125rem;
+}
+.question-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.question-composer input {
+  width: 100%;
+  min-width: 0;
+  min-height: 3rem;
+  padding: 0.75rem;
+  border: 1px solid #8faada;
+  border-radius: 0.55rem;
+  background: white;
+  font-size: 1rem;
+}
+.question-composer input::placeholder {
+  color: #647089;
+}
+.question-composer .btn {
+  justify-content: center;
+  min-height: 2.75rem;
+}
+.question-privacy {
+  margin-top: 0.6rem;
+  font-size: 0.6875rem;
+  color: #4a5d7c;
+}
+.question-launcher,
+.mobile-source {
+  display: none;
+}
+.reader .reading-card {
+  grid-column: 1;
+  grid-row: 2;
+}
+.reader .controls {
+  grid-column: 2;
+  grid-row: 2;
+}
+.reader .source-line {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+.controls .control-next {
+  background: #f4f6fa;
+  border-color: #cbd2df;
+  color: var(--ink);
+}
+.controls .control-next svg {
+  color: var(--accent);
+}
+@media (min-width: 60rem) {
+  .reader .question-card {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .reader .reading-card {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .reader .controls {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  .reader .source-line {
+    grid-column: 1;
+    grid-row: 4;
+  }
+}
+@media (max-width: 59.99rem) and (min-width: 46.01rem) {
+  .question-composer {
+    flex-direction: row;
+  }
+  .question-composer .btn {
+    flex: none;
+  }
+  .question-intro,
+  .question-privacy {
+    display: none;
+  }
+  .question-card h2 {
+    margin-bottom: 0.5rem;
+  }
+}
+@media (max-width: 46rem) {
+  .reader .question-card {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    padding: 0.5rem 0.65rem;
+  }
+  .question-card h2 {
+    font-size: 1rem;
+    margin-bottom: 0.4rem;
+  }
+  .question-composer,
+  .question-intro,
+  .question-privacy {
+    display: none;
+  }
+  .question-launcher {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #8faada;
+    border-radius: 0.5rem;
+    background: white;
+    color: #445574;
+    font-size: 1rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .question-launcher span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .question-launcher svg {
+    flex: none;
+    width: 1.5rem;
+    height: 1.5rem;
+    color: var(--accent);
+  }
+  .question-launcher:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .reader .controls {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .reader .source-line {
+    display: none;
+  }
+  .mobile-source {
+    display: inline-flex;
   }
 }

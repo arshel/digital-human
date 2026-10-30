@@ -1,611 +1,1105 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { AnchorStage, type AvatarStatus, type KeepClear } from '@/components/AnchorStage';
-import { Panel } from '@/components/Panel';
-import { ReadAlong, splitSentences } from '@/components/ReadAlong';
-import { useSpeech, type SpeechState } from '@/components/useSpeech';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { Panel } from "@/components/Panel";
+import { PresenterBackdrop } from "@/components/PresenterBackdrop";
+import { usePresenter } from "@/components/presenter/usePresenter";
+import { CycleTiming, type TimingReport } from "@/components/presenter/timing";
+import type { TimingEvent } from "@/components/presenter/types";
 import {
   AgainIcon,
   AskIcon,
-  ExplainIcon,
+  CaptionsIcon,
   ExternalIcon,
   MeaningIcon,
+  MoreIcon,
   NextIcon,
   PauseIcon,
   PlayIcon,
-  ReplayIcon,
   SendIcon,
   SimplerIcon,
-  SourceIcon,
-  WhyIcon,
-} from '@/components/icons';
-import type { NewsResponse } from '@/lib/ai';
-import type { Article } from '@/lib/news';
+  AccessibilityIcon,
+  TextSizeIcon,
+  NewsIcon,
+} from "@/components/icons";
+import { splitSentences } from "@/lib/spoken";
+import type { ArticleMeta } from "@/lib/articles";
+import type { Action, Previous } from "@/lib/prompt";
 
-type Turn = { role: 'user' | 'assistant'; content: string; articleId?: string | null };
-type Reply = NewsResponse & { stories: Article[]; live: boolean };
-// Wat er naar /api/anchor gaat, plus wat de interface ondertussen laat zien.
-type Request = { history: Turn[]; label: string; activeId: string | null };
-type Failure = { message: string; request: Request };
-type PanelName = 'extra' | 'ask' | 'news' | 'help' | 'source';
+// Alle state van het prototype staat hier. De presentator (gesimuleerd of D-ID) zit achter
+// usePresenter; deze pagina weet alleen wat die doet, niet hoe.
 
-// De vervolgvragen onder "Extra uitleg". lib/ai.ts en lib/fallback.ts herkennen precies deze zinnen.
-const EXPLAIN: { question: string; icon: ReactNode }[] = [
-  { question: 'Leg het makkelijker uit', icon: <SimplerIcon /> },
-  { question: 'Wat betekent dit?', icon: <MeaningIcon /> },
-  { question: 'Waarom is dit belangrijk?', icon: <WhyIcon /> },
-  { question: 'Opnieuw uitleggen', icon: <AgainIcon /> },
-];
-const NEXT_TOPIC = 'Volgende onderwerp';
-
-// De opening gaat over de eerste drie verhalen (OPENING_COUNT in lib/news.ts; niet
-// geïmporteerd omdat die module de demo-artikelen in de clientbundel zou trekken).
-const OPENING_COUNT = 3;
-
-const INTRO = ['Nova is een AI-presentator.', 'Nova legt het nieuws van vandaag uit in eenvoudige taal.'];
-
-// De afspeelknop volgt wat de stem echt doet (useSpeech).
-const PLAYBACK: Record<SpeechState, { label: string; icon: ReactNode }> = {
-  speaking: { label: 'Pauze', icon: <PauseIcon /> },
-  paused: { label: 'Verder luisteren', icon: <PlayIcon /> },
-  done: { label: 'Opnieuw luisteren', icon: <ReplayIcon /> },
-  idle: { label: 'Luisteren', icon: <PlayIcon /> },
+type Config = {
+  newsMode: "test" | "live";
+  avatarMode: "simulated" | "did" | "anam";
+  devTools: boolean;
+  promptVersion: string;
+  poster: string | null;
+  idleVideo: string | null;
+  articles: ArticleMeta[];
 };
 
-function nlDate(iso: string) {
+type Fragment = {
+  articleId: string;
+  action: Action;
+  spoken: string;
+  sentences: string[];
+  mode: "ai" | "fallback";
+  articleVersion: string;
+  promptVersion: string;
+  requestId: string;
+};
+
+type Problem = { message: string; retry?: () => void };
+type PanelName = "ask" | "source" | "help" | "access" | "news" | "dev";
+type Simulate = "" | "gemini-error" | "server-error";
+
+// De drie uitlegknoppen. De opdracht per knop staat in lib/prompt.ts.
+const EXPLAIN: { action: Action; label: string; icon: ReactNode }[] = [
+  { action: "simpler", label: "Leg makkelijker uit", icon: <SimplerIcon /> },
+  { action: "meaning", label: "Wat betekent dit?", icon: <MeaningIcon /> },
+  { action: "more", label: "Vertel meer", icon: <MoreIcon /> },
+];
+
+const PREPARING: Record<Action, string> = {
+  core: "Nova maakt de uitleg klaar.",
+  simpler: "Nova zoekt een makkelijkere uitleg.",
+  meaning: "Nova zoekt uit wat het betekent.",
+  more: "Nova zoekt meer achtergrond.",
+  question: "Nova zoekt het antwoord op je vraag.",
+};
+
+const CAPTIONS_KEY = "nova-captions";
+
+function nlDate(iso: string | null) {
+  if (!iso) return null;
   const date = new Date(iso);
   if (isNaN(date.getTime())) return null;
-  // Alleen een datum aangeleverd (2026-09-12)? Dan ook geen tijd verzinnen.
-  const time = iso.length > 10 ? ({ hour: '2-digit', minute: '2-digit' } as const) : {};
-  return date.toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam', day: 'numeric', month: 'long', year: 'numeric', ...time });
+  return date.toLocaleString("nl-NL", {
+    timeZone: "Europe/Amsterdam",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    ...(iso.length > 10 ? { hour: "2-digit", minute: "2-digit" } : {}),
+  });
 }
 
 function hostname(url: string) {
   try {
-    return new URL(url).hostname.replace(/^www\./, '');
+    return new URL(url).hostname.replace(/^www\./, "");
   } catch {
     return null;
   }
 }
 
-// Uitlegtekst: elke zin op een eigen regel, de belangrijkste vet.
-function Lines({ text, bold = 0 }: { text: string; bold?: number }) {
-  return splitSentences(text).map((s, i) => <p key={i}>{i === bold ? <strong>{s}</strong> : s}</p>);
-}
-
 export default function Page() {
+  const [config, setConfig] = useState<Config | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [index, setIndex] = useState(0);
   const [started, setStarted] = useState(false);
-  const [turns, setTurns] = useState<Turn[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [stories, setStories] = useState<Article[]>([]);
-  const [mode, setMode] = useState<Reply['mode']>('ai');
-  const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState('');
-  const [failure, setFailure] = useState<Failure | null>(null);
+  const [fragment, setFragment] = useState<Fragment | null>(null);
+  const [history, setHistory] = useState<Previous[]>([]);
+  const [preparing, setPreparing] = useState<Action | null>(null);
+  const [problem, setProblem] = useState<Problem | null>(null);
+  const [captions, setCaptions] = useState(true);
   const [panel, setPanel] = useState<PanelName | null>(null);
-  const [draft, setDraft] = useState('');
-  const [avatarRequest, setAvatarRequest] = useState(0);
-  const [avatar, setAvatar] = useState<AvatarStatus>('idle');
-  const [keepClear, setKeepClear] = useState<KeepClear>({ top: null, bottom: 0 });
-  const sending = useRef(false);
-  const mounted = useRef(true);
-  const stage = useRef<HTMLElement>(null);
-  const topic = useRef<HTMLDivElement>(null);
-  const dock = useRef<HTMLDivElement>(null);
-  const textBox = useRef<HTMLDivElement>(null);
-  const speech = useSpeech();
+  const [draft, setDraft] = useState("");
+  const [transcript, setTranscript] = useState(false);
+  const [largeText, setLargeText] = useState(false);
+  const [simulate, setSimulateState] = useState<Simulate>("");
+  // Ook als ref: een "Probeer opnieuw" na een gesimuleerde fout moet een gewone aanvraag zijn.
+  const simulateRef = useRef<Simulate>("");
+  const setSimulate = (s: Simulate) => {
+    simulateRef.current = s;
+    setSimulateState(s);
+  };
+  // Elke nieuwe aanvraag of elk volgend bericht verhoogt dit. Een antwoord dat binnenkomt als
+  // het nummer al verder is, hoort bij een oude vraag of een ander bericht en wordt genegeerd.
+  const seq = useRef(0);
+  const inflight = useRef<AbortController | null>(null);
+  // Met D-ID: het nieuwe antwoord, tot Nova het begint uit te spreken. Zo verschijnen tekst en
+  // stem tegelijk, in plaats van eerst de tekst en seconden later pas de stem.
+  const waiting = useRef<Fragment | null>(null);
+  // Metingen per klik voor de ontwikkelserver (alleen getallen; zie app/api/timing).
+  const cycleTiming = useRef(new CycleTiming());
+  const sendTiming = useCallback((report: TimingReport | null) => {
+    if (!report) return;
+    fetch("/api/timing", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(report),
+    }).catch(() => {});
+  }, []);
+  const onTiming = useCallback(
+    (event: TimingEvent) => {
+      const timing = cycleTiming.current;
+      if (timing.event(event) === "done") sendTiming(timing.flush());
+      // Zonder geluidsmeting komt er geen 'audio': dan kort na het eerste beeld afsluiten.
+      else if (event.step === "playing")
+        setTimeout(() => sendTiming(timing.flush(false, event.cycle)), 1500);
+    },
+    [sendTiming],
+  );
+  const presenter = usePresenter(config?.avatarMode ?? null, preparing !== null, onTiming);
+  // Een echte avatar (D-ID of Anam): video in beeld, tekst pas als Nova praat, metingen.
+  const realAvatar = config?.avatarMode === "did" || config?.avatarMode === "anam";
 
-  const article = stories.find((a) => a.id === activeId) ?? null;
-  const lastAnswerIndex = turns.map((t) => t.role).lastIndexOf('assistant');
-  const current = lastAnswerIndex >= 0 ? turns[lastAnswerIndex] : null;
-  const opening = lastAnswerIndex === 0;
-  const sources = opening ? stories.slice(0, OPENING_COUNT) : article ? [article] : [];
-  const blocked = !started || busy;
+  const articles = config?.articles ?? [];
+  const article = articles[index] ?? null;
+  const speaking =
+    presenter.state === "speaking" || presenter.state === "loading";
+  const paused = presenter.canResume;
+  const blocked = !started || !!preparing;
 
-  const sentences = useMemo(() => (current ? splitSentences(current.content) : INTRO), [current]);
-  const canListen = speech.available && !!current && !busy && !failure;
-  // Nova begint met de belangrijkste boodschap (zie de systeeminstructie), dus die zin staat
-  // vet. Een begroeting of "Natuurlijk." telt niet; de opening gaat over drie dingen tegelijk.
-  const keySentence = !current ? 0 : opening ? -1 : sentences.findIndex((s) => s.split(/\s+/).length >= 3);
-
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
+  const loadConfig = useCallback(() => {
+    setLoadFailed(false);
+    fetch("/api/news")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then(setConfig)
+      .catch(() => setLoadFailed(true));
   }, []);
 
-  // Waar tekst en knoppen over het beeld liggen. AnchorStage houdt het gezicht daarbuiten.
-  useLayoutEffect(() => {
-    const s = stage.current;
-    if (!s) return;
-    const update = () => {
-      const area = s.getBoundingClientRect();
-      const t = topic.current?.getBoundingClientRect();
-      const d = dock.current?.getBoundingClientRect();
-      const next: KeepClear = {
-        top: t ? { left: t.left - area.left, right: t.right - area.left, bottom: t.bottom - area.top } : null,
-        bottom: d ? d.top - area.top : area.height,
-      };
-      // Het vlak moet minstens de tekst, de knoppen en een stuk beeld kunnen tonen. Past dat
-      // niet (klein venster, grote tekst), dan scrolt de pagina in plaats van iets af te snijden.
-      s.style.setProperty('--overlays', `${(next.top?.bottom ?? 0) + (d ? area.bottom - d.top : 0)}px`);
-      setKeepClear((prev) =>
-        prev.bottom === next.bottom &&
-        prev.top?.left === next.top?.left &&
-        prev.top?.right === next.top?.right &&
-        prev.top?.bottom === next.top?.bottom
-          ? prev
-          : next,
-      );
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    for (const el of [s, topic.current, dock.current]) if (el) observer.observe(el);
-    return () => observer.disconnect();
-  }, [started]);
-
-  async function ask(request: Request) {
-    // De ref blokkeert ook een tweede klik die binnenkomt voordat React opnieuw rendert.
-    if (sending.current) return;
-    sending.current = true;
-    // De gebruiker wil iets anders horen: het vorige antwoord stopt meteen.
-    speech.stop();
-    setBusy(true);
-    setFailure(null);
-    setPending(request.label);
-
+  useEffect(() => {
+    loadConfig();
     try {
-      const res = await fetch('/api/anchor', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          messages: request.history,
-          activeArticleId: request.activeId,
-          storyIds: stories.map((a) => a.id),
-        }),
-      });
-
-      if (!res.ok) {
-        // De server legt bij 400 en 429 uit wat er mis is; anders een algemene melding.
-        const problem = await res.json().catch(() => null);
-        if (mounted.current)
-          setFailure({ message: problem?.error ?? 'Nova kan nu geen antwoord geven. Probeer het opnieuw.', request });
-        return;
-      }
-
-      const reply: Reply = await res.json();
-      if (!mounted.current) return;
-
-      // Alleen echt nieuws. Is de NOS-feed niet bereikbaar, dan stuurt de server demo-artikelen
-      // met verzonnen bronnen mee (lib/news.ts). Die tonen we in deze versie niet.
-      if (!reply.live || reply.stories.length === 0) {
-        setFailure({
-          message: reply.stories.length
-            ? 'De nieuwsbron is nu niet bereikbaar. Probeer het over een minuut opnieuw.'
-            : 'Er is nu geen nieuws. Probeer het later opnieuw.',
-          request,
-        });
-        return;
-      }
-
-      if (reply.articleId) setActiveId(reply.articleId);
-      setStories(reply.stories);
-      setMode(reply.mode);
-      // De vraag komt pas in het gesprek als er een antwoord is, zodat "Opnieuw proberen"
-      // precies dezelfde aanvraag nog eens stuurt.
-      setTurns([...request.history, { role: 'assistant', content: reply.text, articleId: reply.articleId }]);
+      if (localStorage.getItem(CAPTIONS_KEY) === "off") setCaptions(false);
+      if (localStorage.getItem("nova-large-text") === "on") setLargeText(true);
     } catch {
-      if (mounted.current)
-        setFailure({ message: 'Er is geen verbinding. Controleer je internet en probeer het opnieuw.', request });
-    } finally {
-      sending.current = false;
-      if (mounted.current) setBusy(false);
+      // Geen opslag (privévenster): ondertiteling blijft aan.
+    }
+  }, [loadConfig]);
+
+  useEffect(() => {
+    document.documentElement.dataset.textSize = largeText ? "large" : "normal";
+    try {
+      localStorage.setItem("nova-large-text", largeText ? "on" : "off");
+    } catch {
+      /* Sessievoorkeur blijft werken zonder opslag. */
+    }
+  }, [largeText]);
+
+  function toggleCaptions() {
+    const next = !captions;
+    setCaptions(next);
+    try {
+      localStorage.setItem(CAPTIONS_KEY, next ? "on" : "off");
+    } catch {
+      // Niet bewaard; de keuze geldt dan alleen nu.
     }
   }
 
-  // Niets start vanzelf: de gebruiker kiest zelf wanneer het nieuws begint. Pas dan gaan de
-  // eerste vraag naar Gemini en de avatarsessie van start.
-  function startNews() {
-    if (started) return;
-    speech.unlock();
+  async function explain(
+    target: ArticleMeta,
+    action: Action,
+    question?: string,
+    previous = history,
+  ) {
+    // Al een aanvraag onderweg? Dan niets: snel dubbelklikken mag geen tweede betaalde vraag geven.
+    if (inflight.current) return;
+    const mine = ++seq.current;
+    const controller = new AbortController();
+    inflight.current = controller;
+    waiting.current = null;
+    if (realAvatar) sendTiming(cycleTiming.current.start(mine, action, performance.now()));
+    presenter.stop();
+    setPreparing(action);
+    setProblem(null);
+
+    // Verbinden en het antwoord maken tegelijk, zodat de gebruiker niet twee keer wacht. Lukt
+    // de avatar niet, dan staat de tekst er toch.
+    const connected = presenter.connect().then(
+      (ready) => ready,
+      () => false,
+    );
+
+    const simulating = simulateRef.current;
+    if (simulating) setSimulate("");
+    try {
+      const res = await fetch("/api/explain", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "content-type": "application/json",
+          ...(simulating ? { "x-nova-simulate": simulating } : {}),
+        },
+        body: JSON.stringify({
+          articleId: target.id,
+          action,
+          question,
+          previous,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (mine !== seq.current) return;
+      if (!res.ok || !data) {
+        setProblem({
+          message:
+            data?.error ?? "Nova kan nu geen antwoord geven. Probeer opnieuw.",
+          retry: () => explain(target, action, question, previous),
+        });
+        return;
+      }
+      // Hoort het antwoord niet bij dit bericht, dan nooit afspelen.
+      if (data.articleId !== target.id) return;
+
+      const next: Fragment = {
+        ...data,
+        action,
+        sentences: splitSentences(data.spoken),
+      };
+      setHistory([...previous, { action, spoken: data.spoken }].slice(-6));
+      cycleTiming.current.text(mine, performance.now(), { requestId: data.requestId, ...data.timing });
+      if (inflight.current === controller) inflight.current = null;
+      setPreparing(null);
+
+      const avatar = await connected;
+      if (mine !== seq.current) return;
+      if (realAvatar && avatar) {
+        // Tekst pas tonen als Nova praat (of als dat mislukt): zie het effect op presenter.state.
+        waiting.current = next;
+        setFragment(null);
+      } else {
+        setFragment(next);
+      }
+      if (avatar) await presenter.speak(next.sentences, mine);
+    } catch (err) {
+      if (controller.signal.aborted || mine !== seq.current) return;
+      console.error("[explain]", err);
+      setProblem({
+        message: "Verbinding verbroken. Probeer opnieuw.",
+        retry: () => explain(target, action, question, previous),
+      });
+    } finally {
+      if (inflight.current === controller) inflight.current = null;
+      if (mine === seq.current) setPreparing(null);
+    }
+  }
+
+  useEffect(() => {
+    const next = waiting.current;
+    if (!next) return;
+    if (
+      ["speaking", "paused", "error", "disconnected"].includes(presenter.state)
+    ) {
+      waiting.current = null;
+      setFragment(next);
+    }
+  }, [presenter.state]);
+
+  function start() {
+    if (started || !article) return;
     setStarted(true);
-    setAvatarRequest((n) => n + 1);
-    ask({ history: [], label: '', activeId: null });
+    explain(article, "core", undefined, []);
   }
 
-  // De startknop verdwijnt; de focus gaat naar de tekst die nu komt.
-  useEffect(() => {
-    if (started) textBox.current?.focus();
-  }, [started]);
-
-  // Een nieuw antwoord leest Nova meteen voor: de gebruiker vroeg erom met een klik.
-  useEffect(() => {
-    if (current) speech.play(sentences);
-    // Alleen bij een nieuw antwoord, niet bij elke render.
-  }, [lastAnswerIndex]);
-
-  function listen() {
-    if (!canListen) return;
-    if (speech.state === 'speaking') speech.pause();
-    else if (speech.state === 'paused') speech.resume();
-    else speech.play(sentences);
+  // Volgend bericht: oude uitleg stopt, een laat antwoord wordt genegeerd en de context van het
+  // vorige bericht gaat weg. Pas daarna de kern van het nieuwe bericht.
+  function next() {
+    if (!started || articles.length === 0) return;
+    selectArticle((index + 1) % articles.length);
   }
 
-  function send(question: string, label: string) {
-    const text = question.trim();
-    if (!text || blocked || sending.current) return false;
+  function selectArticle(nextIndex: number) {
+    if (!articles[nextIndex] || (started && nextIndex === index)) return;
+    seq.current++;
+    inflight.current?.abort();
+    inflight.current = null;
+    waiting.current = null;
+    presenter.stop();
+    setIndex(nextIndex);
+    setFragment(null);
+    setTranscript(false);
+    setHistory([]);
+    setProblem(null);
     setPanel(null);
-    ask({ history: [...turns, { role: 'user', content: text }], label, activeId });
-    return true;
+    if (started) explain(articles[nextIndex], "core", undefined, []);
   }
 
-  // Een onderwerp uit "Ander nieuws". Het nummer is de positie in de hele lijst, net als in de
-  // context voor Gemini; het artikel gaat als actief mee, zodat de volledige tekst erbij zit.
-  function choose(index: number) {
-    const story = stories[index];
-    if (!story || blocked || sending.current) return;
-    setPanel(null);
-    ask({
-      history: [...turns, { role: 'user', content: `Vertel over onderwerp ${index + 1}.` }],
-      label: `Je koos: ${story.title}`,
-      activeId: story.id,
-    });
+  function action(a: Action) {
+    if (blocked || !article) return;
+    explain(article, a);
+  }
+
+  function togglePlayback() {
+    if (speaking) presenter.pause();
+    else if (paused) presenter.resume();
+    else if (fragment && !preparing) presenter.replay();
+  }
+
+  function again() {
+    if (blocked || !fragment) return;
+    presenter.replay();
   }
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    if (send(draft, `Je vroeg: ${draft.trim()}`)) setDraft('');
-  }
-
-  function open(name: PanelName) {
-    if ((name === 'extra' || name === 'ask') && blocked) return;
-    setPanel(name);
+    const question = draft.trim();
+    if (!question || preparing || inflight.current || !article) return;
+    // A question can also start the conversation, without an opening summary.
+    if (!started) setStarted(true);
+    setPanel(null);
+    setDraft("");
+    explain(article, "question", question, started ? history : []);
   }
 
   const close = useCallback(() => setPanel(null), []);
 
-  // Wat er in het meeleesvak staat.
-  let text: ReactNode;
-  if (!started) {
-    text = INTRO.map((s, i) => <p key={i}>{i === 0 ? <strong>{s}</strong> : s}</p>);
-  } else if (busy) {
-    text = (
-      <>
-        {pending && <p>{pending}</p>}
-        <p className="status">
-          <span className="pulse" aria-hidden="true" />
-          {current || pending ? 'Nova maakt een antwoord…' : 'Nova haalt het nieuws op…'}
-        </p>
-      </>
-    );
-  } else if (failure) {
-    text = <Lines text={failure.message} />;
-  } else {
-    text = sentences.map((s, i) => (
-      <p key={i} className={i === speech.index ? 'is-spoken' : undefined}>
-        {i === keySentence ? <strong>{s}</strong> : s}
-      </p>
-    ));
-  }
+  // ---------- wat er in beeld staat ----------
 
-  const showTopic = started && !(failure && !current);
+  let status: { text: string; tone?: "busy" | "problem" };
+  if (!config)
+    status = loadFailed
+      ? { text: "Laden lukt niet. Probeer opnieuw.", tone: "problem" }
+      : { text: "Even laden", tone: "busy" };
+  else if (!article)
+    status = {
+      text: "Er is nu geen nieuws. Probeer het later opnieuw.",
+      tone: "problem",
+    };
+  else if (!started) status = { text: "Klaar om te starten" };
+  else if (problem) status = { text: problem.message, tone: "problem" };
+  else if (preparing)
+    status = { text: `Even laden. ${PREPARING[preparing]}`, tone: "busy" };
+  else if (presenter.state === "connecting")
+    status = { text: "Verbinding maken. Even laden.", tone: "busy" };
+  else if (presenter.state === "loading")
+    status = { text: "Even laden.", tone: "busy" };
+  else if (presenter.state === "speaking") status = { text: "Nova vertelt" };
+  else if (presenter.state === "paused")
+    status = { text: presenter.detail || "Gepauzeerd" };
+  else if (presenter.state === "disconnected")
+    status = {
+      text:
+        presenter.detail === "idle" || presenter.detail === "hidden"
+          ? "De verbinding is gestopt omdat je even weg was. Kies een knop om verder te gaan."
+          : "Verbinding verbroken. Probeer opnieuw.",
+      tone: "problem",
+    };
+  else if (presenter.state === "error")
+    status = {
+      text: presenter.detail || "Verbinding verbroken. Probeer opnieuw.",
+      tone: "problem",
+    };
+  else status = { text: "Uitgekeken · ontdek meer over dit bericht" };
+
+  const published = article && nlDate(article.published);
+  const updated = article && nlDate(article.updated);
+  const showVideo = realAvatar;
+  const live =
+    showVideo &&
+    ["loading", "speaking", "paused", "ready"].includes(presenter.state);
+  const timingLabel =
+    presenter.timing === "sentence"
+      ? "Ondertiteling"
+      : presenter.timing === "estimated"
+        ? "Ondertiteling (geschatte timing)"
+        : presenter.timing === "simulated"
+          ? "Ondertiteling (gesimuleerd tempo)"
+          : "Meeleestekst";
+
+  // D-ID has no exact sentence events. Its complete reading text stays available below
+  // the image; only presenters with sentence timing get changing overlay captions.
+  const timedCaptions = presenter.timing !== "none";
+  const activeSentence =
+    fragment?.sentences[presenter.sentence >= 0 ? presenter.sentence : 0];
 
   return (
     <div className="app">
       <header className="header">
-        <h1 className="brand">
+        <p className="brand">
           <span className="brand-name">Nova</span>
-          <span className="brand-tagline">Nieuws met uitleg</span>
-        </h1>
-        <nav className="header-actions" aria-label="Menu">
-          {stories.length > 0 && (
-            <button type="button" className="btn btn-pill" aria-disabled={busy} onClick={() => !busy && open('news')}>
-              Ander nieuws
-            </button>
-          )}
-          <button type="button" className="btn btn-pill" onClick={() => open('help')}>
-            Hoe werkt dit?
+          <span className="brand-tagline">Nieuws in duidelijke taal</span>
+        </p>
+        <nav className="header-tools" aria-label="Instellingen">
+          <button
+            type="button"
+            className="btn header-tool"
+            aria-label={largeText ? "Normale tekstgrootte" : "Grotere tekst"}
+            aria-pressed={largeText}
+            onClick={() => setLargeText(!largeText)}
+          >
+            <TextSizeIcon />
+            <span>Tekstgrootte</span>
+          </button>
+          <button
+            type="button"
+            className="btn header-tool"
+            onClick={() => setPanel("access")}
+            aria-label="Toegankelijkheid"
+          >
+            <AccessibilityIcon />
+            <span>Toegankelijkheid</span>
           </button>
         </nav>
       </header>
 
-      <main ref={stage} className="stage">
-        <AnchorStage startRequest={avatarRequest} onStatus={setAvatar} keepClear={keepClear} />
-
-        {showTopic && (
-          <div ref={topic} className="topic">
-            <p className="badge">AI-presentator</p>
-            <p className="topic-title">{!opening && article ? article.title : 'Het nieuws van vandaag'}</p>
-            {mode === 'fallback' && current && (
-              <p className="topic-note">
-                <strong>De AI werkt nu niet.</strong>
-                <br />
-                Je leest zinnen uit het bericht.
-              </p>
+      <main className={`layout${started ? " is-started" : ""}`}>
+        <section className="stage" aria-label="Presentator">
+          {article && <h1 className="stage-title">{article.shortTitle}</h1>}
+          <div className="frame">
+            <PresenterBackdrop poster={config?.poster ?? null} />
+            {showVideo && (
+              <video
+                ref={presenter.video}
+                className="frame-media"
+                hidden={!live}
+                autoPlay
+                playsInline
+                disablePictureInPicture
+                aria-label="Nova, de AI-presentator"
+              />
+            )}
+            {/* Vóór Start: de wachtvideo van de avatar (een gewoon videobestand, geen stream en geen
+                kosten), zodat de presentator al beweegt. Anders de foto. */}
+            {!live &&
+              (config?.idleVideo ? (
+                <video
+                  className="frame-media"
+                  src={config.idleVideo}
+                  poster={config.poster ?? undefined}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  disablePictureInPicture
+                  aria-label="Nova, de AI-presentator"
+                />
+              ) : config?.poster ? (
+                <img
+                  className="frame-media"
+                  src={config.poster}
+                  alt="Nova, de AI-presentator"
+                />
+              ) : (
+                <div className="frame-empty" aria-hidden="true">
+                  <span className="placeholder-mark">Nova</span>
+                  <span>Je nieuws, helder verteld.</span>
+                </div>
+              ))}
+            <p className="ai-label">
+              <span className="on-air-dot" /> AI-presentator
+            </p>
+            {config?.avatarMode === "simulated" && (
+              <p className="sim-label">Gesimuleerde preview</p>
             )}
           </div>
-        )}
+          {fragment && captions && (!timedCaptions || activeSentence) && (
+            <p
+              className={`stage-caption${timedCaptions ? "" : " is-reading"}`}
+              aria-label={timingLabel}
+            >
+              {timedCaptions ? activeSentence : fragment.spoken}
+            </p>
+          )}
+          <div className="stage-toolbar">
+            <div className="playback">
+              {!started ? (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-start"
+                  disabled={!article}
+                  onClick={start}
+                >
+                  <PlayIcon />
+                  Start nieuws
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={!!preparing || !fragment}
+                    onClick={togglePlayback}
+                  >
+                    {speaking ? <PauseIcon /> : <PlayIcon />}
+                    {speaking ? "Pauze" : paused ? "Verder" : "Afspelen"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    disabled={blocked || !fragment}
+                    onClick={again}
+                  >
+                    <AgainIcon />
+                    <span>Nog een keer</span>
+                  </button>
+                </>
+              )}
+            </div>
+            <p
+              className={`status${status.tone ? ` status-${status.tone}` : ""}`}
+              role="status"
+              aria-live="polite"
+            >
+              {status.tone === "busy" && (
+                <span className="pulse" aria-hidden="true" />
+              )}
+              {status.text}
+            </p>
+            <button
+              type="button"
+              className="btn captions-toggle"
+              aria-label={
+                captions ? "Ondertiteling uitzetten" : "Ondertiteling aanzetten"
+              }
+              aria-pressed={captions}
+              onClick={toggleCaptions}
+            >
+              <CaptionsIcon />
+              <span>Ondertiteling {captions ? "aan" : "uit"}</span>
+            </button>
+          </div>
+          {problem?.retry && !preparing && (
+            <button type="button" className="btn retry" onClick={problem.retry}>
+              <AgainIcon />
+              Probeer opnieuw
+            </button>
+          )}
+          {loadFailed && (
+            <button type="button" className="btn retry" onClick={loadConfig}>
+              <AgainIcon />
+              Probeer opnieuw
+            </button>
+          )}
+        </section>
 
-        {started && avatar !== 'live' && avatar !== 'idle' && (
-          <div className="stage-status" style={{ top: keepClear.bottom }}>
-            {avatar === 'connecting' ? (
-              <p>Het beeld van de presentator start…</p>
+        <section
+          className={`reader${fragment && timedCaptions ? " has-overlay" : ""}`}
+          aria-label="Uitleg bij het nieuws"
+        >
+          <section className="question-card" aria-labelledby="question-title">
+            <h2 id="question-title">
+              <AskIcon />
+              Stel zelf een vraag
+            </h2>
+            <p className="question-intro">
+              Wat wil jij weten over dit bericht?
+            </p>
+            <form className="question-composer" onSubmit={submit}>
+              <label className="sr-only" htmlFor="inline-question">
+                Jouw vraag over dit bericht
+              </label>
+              <input
+                id="inline-question"
+                value={draft}
+                placeholder="Typ hier je vraag…"
+                autoComplete="off"
+                enterKeyHint="send"
+                maxLength={300}
+                onChange={(e) => setDraft(e.target.value)}
+              />
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={!draft.trim() || !!preparing || !article}
+              >
+                <SendIcon />
+                Vraag Nova
+              </button>
+            </form>
+            <button
+              type="button"
+              className="question-launcher"
+              aria-label="Stel zelf een vraag"
+              aria-haspopup="dialog"
+              disabled={!!preparing || !article}
+              onClick={() => setPanel("ask")}
+            >
+              <span>{draft || "Wat wil je weten?"}</span>
+              <SendIcon />
+            </button>
+            <p className="question-privacy">Typ geen persoonlijke gegevens.</p>
+          </section>
+          <div className="reading-card">
+            {fragment ? (
+              <>
+                <p className="reading-label">
+                  {timedCaptions ? "Nova vertelt" : "Meeleestekst"}
+                </p>
+                <div className="captions-text">
+                  {fragment.sentences.map((sentence, i) => (
+                    <p
+                      key={i}
+                      className={
+                        i === presenter.sentence ? "is-spoken" : undefined
+                      }
+                    >
+                      {sentence}
+                    </p>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="transcript-toggle"
+                  aria-expanded={transcript}
+                  onClick={() => setTranscript(!transcript)}
+                >
+                  Lees volledige tekst
+                  <MoreIcon />
+                </button>
+                {fragment.mode === "fallback" && (
+                  <p className="captions-note">
+                    De AI werkt nu niet. Je hoort zinnen uit het bericht zelf.
+                  </p>
+                )}
+              </>
             ) : (
               <>
+                <p className="reading-label">Het nieuws, op jouw tempo</p>
                 <p>
-                  <strong>{avatar === 'ended' ? 'Het beeld is gestopt.' : 'De presentator werkt nu niet.'}</strong>
+                  {article
+                    ? "Stel je vraag aan Nova, of start eerst het nieuws."
+                    : config
+                      ? "Er is nu geen nieuws beschikbaar. Probeer het later opnieuw."
+                      : "De nieuwsselectie wordt geladen."}
                 </p>
+              </>
+            )}
+          </div>
+          <div className="controls" role="group" aria-label="Meer uitleg">
+            {EXPLAIN.map(({ action: a, label, icon }) => (
+              <button
+                key={a}
+                type="button"
+                className="btn"
+                disabled={blocked}
+                onClick={() => action(a)}
+              >
+                {icon}
+                <span>{label}</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              className="btn control-next"
+              disabled={!started}
+              onClick={next}
+            >
+              <NextIcon />
+              <span>
+                {index === articles.length - 1
+                  ? "Terug naar bericht 1"
+                  : "Volgend bericht"}
+              </span>
+            </button>
+          </div>
+          <div className="source-line">
+            {article && (
+              <>
                 <p>
-                  {avatar === 'ended'
-                    ? 'In deze testversie stopt het beeld na een tijdje vanzelf.'
-                    : 'Je kunt het nieuws wel meelezen.'}
+                  Bron: <strong>{article.publisher}</strong>
+                  {published && <> · {published}</>}
+                  {updated && <> · bijgewerkt {updated}</>}
                 </p>
-                <button type="button" className="btn" onClick={() => setAvatarRequest((n) => n + 1)}>
-                  <PlayIcon />
-                  {avatar === 'ended' ? 'Start het beeld opnieuw' : 'Probeer het opnieuw'}
+                <button
+                  type="button"
+                  className="btn btn-source"
+                  onClick={() => setPanel("source")}
+                >
+                  Bekijk bron
+                  <ExternalIcon />
                 </button>
               </>
             )}
+            <p className="ai-note">
+              <span aria-hidden="true">✧</span> Uitleg gemaakt met AI
+            </p>
           </div>
-        )}
-
-        <div ref={dock} className="dock">
-          <div className="readalong-slot">
-            <ReadAlong
-              textRef={textBox}
-              version={`${started}-${busy}-${!!failure}-${lastAnswerIndex}`}
-              spoken={speech.index}
-              footer={
-                started &&
-                !busy &&
-                failure && (
-                  <button type="button" className="btn" onClick={() => ask(failure.request)}>
-                    <AgainIcon />
-                    Opnieuw proberen
-                  </button>
-                )
-              }
-            >
-              {text}
-            </ReadAlong>
-          </div>
-
-          <div className="controls" data-playback={(started && speech.available) || undefined}>
-            {!started ? (
-              <button key="start" type="button" className="btn btn-primary control control-start" onClick={startNews}>
-                <PlayIcon />
-                Start nieuws
-              </button>
-            ) : (
-              <>
-                {/* Alle labels staan op elkaar; alleen het actieve is zichtbaar. Zo is de knop altijd
-                    zo groot als het langste label, en schuift er niets op als "Pauze" verandert. */}
-                {speech.available && (
-                  <button
-                    key="listen"
-                    type="button"
-                    className="btn control control-play"
-                    aria-disabled={!canListen}
-                    onClick={listen}
-                  >
-                    <span className="control-variants">
-                      {Object.entries(PLAYBACK).map(([state, { label, icon }]) => (
-                        <span key={state} aria-hidden={state !== speech.state || undefined}>
-                          {icon}
-                          {label}
-                        </span>
-                      ))}
-                    </span>
-                  </button>
-                )}
-                <div className="control-actions">
-                  <button key="ask" type="button" className="btn control" aria-disabled={blocked} onClick={() => open('ask')}>
-                    <AskIcon />
-                    Stel een vraag
-                  </button>
-                  <button type="button" className="btn btn-primary control" aria-disabled={blocked} onClick={() => open('extra')}>
-                    <ExplainIcon />
-                    Extra uitleg
-                  </button>
-                  <button
-                    type="button"
-                    className="btn control control-next"
-                    aria-disabled={blocked}
-                    onClick={() => send(NEXT_TOPIC, `Je koos: ${NEXT_TOPIC}`)}
-                  >
-                    <NextIcon />
-                    {NEXT_TOPIC}
-                  </button>
-                </div>
-              </>
-            )}
-
-            {sources.length > 0 && (
-              <button type="button" className="source-link" onClick={() => open('source')}>
-                <SourceIcon />
-                {sources.length > 1 ? 'Bekijk de bronnen' : 'Bekijk de bron'}
-              </button>
-            )}
-          </div>
-        </div>
+        </section>
       </main>
 
-      <Panel open={panel === 'extra'} onClose={close} title="Extra uitleg" size="compact">
-        <p>Kies wat je wilt weten.</p>
-        <div className="options">
-          {EXPLAIN.map(({ question, icon }, i) => (
+      <footer className="site-footer">
+        <span>Nova · Nieuws in duidelijke taal</span>
+        <div className="footer-tools">
+          <button
+            type="button"
+            className="btn btn-quiet"
+            onClick={() => setPanel("news")}
+          >
+            <NewsIcon />
+            <span className="desktop-label">Ander nieuws</span>
+            <span className="mobile-label">Nieuws</span>
+          </button>
+          {article && (
             <button
-              key={question}
               type="button"
-              className="btn option"
-              data-autofocus={i === 0 || undefined}
-              onClick={() => send(question, `Je koos: ${question}`)}
+              className="btn btn-quiet mobile-source"
+              aria-label="Bekijk bron"
+              onClick={() => setPanel("source")}
             >
-              {icon}
-              {question}
+              Bron
             </button>
+          )}
+          {fragment && (
+            <button
+              type="button"
+              className="btn btn-quiet mobile-transcript"
+              onClick={() => setTranscript(true)}
+            >
+              <span aria-label="Volledige tekst">Tekst</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-quiet"
+            onClick={() => setPanel("help")}
+          >
+            <span className="desktop-label">Hoe werkt Nova?</span>
+            <span className="mobile-label">Hulp</span>
+          </button>
+          {config?.devTools && (
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() => setPanel("dev")}
+            >
+              Testopties
+            </button>
+          )}
+        </div>
+      </footer>
+      <Panel open={panel === "news"} onClose={close} title="Ander nieuws">
+        <section className="today" aria-labelledby="today-title">
+          <div className="section-heading">
+            <h2 id="today-title">
+              {config?.newsMode === "test" ? "In deze selectie" : "Vandaag"}
+            </h2>
+            <span>
+              {articles.length
+                ? `${index + 1} van ${articles.length}`
+                : "Nieuws"}
+            </span>
+          </div>
+          <div className="story-list">
+            {articles.map((item, i) => (
+              <button
+                type="button"
+                key={item.id}
+                className={`story-card${i === index ? " is-selected" : ""}`}
+                aria-current={i === index ? "true" : undefined}
+                onClick={() => selectArticle(i)}
+              >
+                <span className="story-art" aria-hidden="true">
+                  <NewsIcon />
+                  <span>{String(i + 1).padStart(2, "0")}</span>
+                </span>
+                <span className="story-publisher">
+                  {item.publisher}
+                  <span>{i === index ? "Nu in beeld" : "Bekijk bericht"}</span>
+                </span>
+                <span className="story-title">{item.shortTitle}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      </Panel>
+      <Panel
+        open={transcript}
+        onClose={() => setTranscript(false)}
+        title="Volledige tekst"
+      >
+        <div className="transcript-body">
+          {fragment?.sentences.map((sentence, i) => (
+            <p
+              key={i}
+              className={i === presenter.sentence ? "is-spoken" : undefined}
+            >
+              {sentence}
+            </p>
           ))}
         </div>
       </Panel>
+      <Panel open={panel === "dev"} onClose={close} title="Testopties">
+        {config?.devTools && (
+          <DevPanel
+            config={config}
+            fragment={fragment}
+            presenterState={presenter.state}
+            simulate={simulate}
+            onSimulate={setSimulate}
+            onDrop={presenter.simulateDrop}
+          />
+        )}
+      </Panel>
 
-      <Panel open={panel === 'ask'} onClose={close} title="Stel een vraag" size="compact">
+      <Panel
+        open={panel === "access"}
+        onClose={close}
+        title="Toegankelijkheid"
+        size="compact"
+      >
+        <div className="access-settings">
+          <p>Stel Nova in zoals jij prettig vindt.</p>
+          <button
+            type="button"
+            className="btn"
+            aria-pressed={largeText}
+            onClick={() => setLargeText(!largeText)}
+          >
+            <TextSizeIcon />
+            Grotere tekst: {largeText ? "aan" : "uit"}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            aria-pressed={captions}
+            onClick={toggleCaptions}
+          >
+            <CaptionsIcon />
+            Ondertiteling: {captions ? "aan" : "uit"}
+          </button>
+          <p>
+            Je kunt altijd meelezen, pauzeren en de uitleg opnieuw afspelen.
+          </p>
+          <button
+            type="button"
+            className="btn btn-quiet"
+            onClick={() => setPanel("help")}
+          >
+            Hoe werkt Nova?
+          </button>
+        </div>
+      </Panel>
+
+      <Panel
+        open={panel === "ask"}
+        onClose={close}
+        title="Stel zelf een vraag"
+        size="compact"
+      >
         <form className="ask-form" onSubmit={submit}>
-          <label htmlFor="question">Typ je vraag</label>
+          <label htmlFor="question">Typ een korte vraag over dit bericht</label>
           <input
             id="question"
             data-autofocus
             value={draft}
             autoComplete="off"
             enterKeyHint="send"
-            maxLength={2000}
+            maxLength={300}
             onChange={(e) => setDraft(e.target.value)}
           />
-          <p>Spreken kan nog niet.</p>
-          <p>Je typt je vraag hier.</p>
-          <button type="submit" className="btn btn-primary" aria-disabled={!draft.trim()}>
+          <p>Je vraag gaat over: {article?.shortTitle}</p>
+          <p>
+            Typ geen persoonlijke gegevens. Je vraag gaat naar de AI van Google
+            (Gemini) en wordt niet bewaard.
+          </p>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={!draft.trim() || !!preparing || !article}
+          >
             <SendIcon />
-            Verstuur
+            Vraag Nova
           </button>
         </form>
       </Panel>
 
-      <Panel open={panel === 'news'} onClose={close} title="Ander nieuws">
-        <p>Kies een onderwerp.</p>
-        <p>Nova legt het uit.</p>
-        <ul className="stories">
-          {stories.map((s, i) => (
-            <li key={s.id}>
-              <button
-                type="button"
-                className="btn story"
-                aria-current={s.id === activeId ? 'true' : undefined}
-                aria-disabled={busy}
-                data-autofocus={i === 0 || undefined}
-                onClick={() => choose(i)}
-              >
-                <strong>{s.title}</strong>
-                <span>
-                  {nlDate(s.published)}
-                  {s.id === activeId && ' · Nu bezig'}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+      <Panel open={panel === "source"} onClose={close} title="Bron">
+        {article && (
+          <div className="source">
+            <p>
+              <strong>{article.title}</strong>
+            </p>
+            <p>
+              Bron: <strong>{article.publisher}</strong>
+            </p>
+            {published && <p>Gepubliceerd: {published}</p>}
+            {updated && <p>Bijgewerkt: {updated}</p>}
+            <a
+              className="link"
+              href={article.url}
+              target="_blank"
+              rel="noreferrer"
+              data-autofocus
+            >
+              {hostname(article.url)
+                ? `Open het bericht op ${hostname(article.url)}`
+                : "Open het bericht"}
+              <ExternalIcon />
+              <span className="sr-only"> (opent in een nieuw tabblad)</span>
+            </a>
+            <p>Nova vertelt alleen wat in dit bericht staat.</p>
+            <p>Nova is geen dienst van de {article.publisher}.</p>
+          </div>
+        )}
       </Panel>
 
-      <Panel open={panel === 'source'} onClose={close} title={sources.length > 1 ? 'Bronnen' : 'Bron'}>
-        {sources.length > 1 && <p>Nova vertelde over deze berichten.</p>}
-        <ul className="sources">
-          {sources.map((s) => {
-            const date = nlDate(s.published);
-            const host = hostname(s.sourceUrl);
-            return (
-              <li key={s.id}>
-                <p>
-                  <strong>{s.title}</strong>
-                </p>
-                <p>
-                  Bron: <strong>{s.source}</strong>
-                </p>
-                {date && (
-                  <p>
-                    Gepubliceerd: <strong>{date}</strong>
-                  </p>
-                )}
-                <a className="link" href={s.sourceUrl} target="_blank" rel="noreferrer" data-autofocus>
-                  {host ? `Open het bericht op ${host}` : 'Open het bericht'}
-                  <ExternalIcon />
-                  <span className="sr-only"> (opent in een nieuw tabblad)</span>
-                </a>
-              </li>
-            );
-          })}
-        </ul>
-        <p>Nova gebruikt de tekst uit de nieuwsfeed van de bron.</p>
-        <p>Nova is geen dienst van deze nieuwsbron.</p>
-      </Panel>
-
-      <Panel open={panel === 'help'} onClose={close} title="Hoe werkt dit?">
+      <Panel open={panel === "help"} onClose={close} title="Hoe werkt dit?">
         <div className="help">
           <section>
             <h3>Wat is Nova?</h3>
             <p>
-              <strong>Nova is een AI-presentator.</strong>
+              <strong>Nova is een AI-presentator. Nova is geen mens.</strong>
             </p>
-            <p>Nova is geen echt mens.</p>
-            <p>Een computer maakt de tekst met AI.</p>
+            <p>De tekst maakt een computer met AI (Gemini van Google).</p>
+            <p>Het beeld en de stem maakt D-ID, ook met AI.</p>
           </section>
           <section>
             <h3>Waar komt het nieuws vandaan?</h3>
-            <p>Nova gebruikt alleen berichten uit de nieuwsfeed van de NOS.</p>
+            <p>Nova gebruikt alleen het bericht dat je ziet.</p>
             <p>
-              <strong>Nova is geen dienst van de NOS.</strong>
+              Bij elk bericht staat de bron. Met ‘Bekijk bron’ lees je het hele
+              bericht.
             </p>
-            <p>Bij elk onderwerp kun je de bron bekijken.</p>
-          </section>
-          <section>
-            <h3>Kan Nova fouten maken?</h3>
             <p>
-              <strong>AI kan fouten maken.</strong>
+              <strong>AI kan fouten maken.</strong> Twijfel je? Lees dan het
+              bericht bij de bron.
             </p>
-            <p>Twijfel je?</p>
-            <p>Lees dan het bericht bij de bron.</p>
           </section>
           <section>
             <h3>Welke knoppen zijn er?</h3>
-            {speech.available && (
-              <>
-                <p>
-                  <strong>Pauze:</strong> Nova stopt met voorlezen.
-                </p>
-                <p>
-                  <strong>Verder luisteren:</strong> Nova leest verder.
-                </p>
-              </>
-            )}
             <p>
-              <strong>Stel een vraag:</strong> je typt zelf een vraag.
+              <strong>Pauze en Verder:</strong> Nova stopt even, en gaat daarna
+              verder.
             </p>
             <p>
-              <strong>Extra uitleg:</strong> Nova legt het onderwerp nog een keer uit.
+              <strong>Nog een keer:</strong> je hoort de laatste uitleg opnieuw.
             </p>
             <p>
-              <strong>Volgende onderwerp:</strong> Nova vertelt het volgende nieuws.
+              <strong>Leg makkelijker uit:</strong> dezelfde uitleg, met
+              makkelijkere woorden.
             </p>
             <p>
-              <strong>Ander nieuws:</strong> je kiest zelf een onderwerp.
+              <strong>Wat betekent dit?</strong> Nova legt het belangrijkste
+              woord of gevolg uit.
             </p>
             <p>
-              <strong>Toon meer:</strong> je ziet alle tekst.
+              <strong>Vertel meer:</strong> Nova vertelt meer over de
+              achtergrond.
+            </p>
+            <p>
+              <strong>Stel een vraag:</strong> je typt zelf een korte vraag over
+              dit bericht.
+            </p>
+            <p>
+              <strong>Volgend bericht:</strong> Nova stopt en vertelt het
+              volgende bericht.
+            </p>
+            <p>
+              <strong>Ondertiteling:</strong> de tekst van Nova staat in beeld,
+              of niet.
             </p>
           </section>
           <section>
-            <h3>Hoe klinkt Nova?</h3>
-            {speech.available ? (
-              <>
-                <p>
-                  <strong>Nova leest de tekst voor.</strong>
-                </p>
-                <p>Je hoort de stem van je browser.</p>
-                <p>De zin die je hoort, heeft een blauwe streep.</p>
-                <p>De mond van Nova beweegt nog niet mee.</p>
-              </>
-            ) : (
-              <>
-                <p>
-                  <strong>Voorlezen werkt niet in deze browser.</strong>
-                </p>
-                <p>Er is geen Nederlandse stem.</p>
-                <p>Lees de tekst in beeld mee.</p>
-              </>
-            )}
-            <p>In deze testversie stopt het beeld na een tijdje vanzelf.</p>
+            <h3>Wat gebeurt er met mijn gegevens?</h3>
+            <p>Je hebt geen account nodig.</p>
+            <p>Je vragen en de antwoorden worden niet bewaard.</p>
           </section>
         </div>
       </Panel>
     </div>
+  );
+}
+
+// Alleen voor ontwikkelaars: foutsimulatie, versies van het laatste antwoord en het verbruik.
+function DevPanel({
+  config,
+  fragment,
+  presenterState,
+  simulate,
+  onSimulate,
+  onDrop,
+}: {
+  config: Config;
+  fragment: Fragment | null;
+  presenterState: string;
+  simulate: Simulate;
+  onSimulate: (s: Simulate) => void;
+  onDrop: () => void;
+}) {
+  const [usage, setUsage] = useState<Record<string, unknown> | null>(null);
+  const loadUsage = () =>
+    fetch("/api/did/usage")
+      .then((r) => r.json())
+      .then(setUsage)
+      .catch(() => setUsage({ error: "niet geladen" }));
+  const seconds = (n: unknown) => `${Math.round(Number(n) || 0)} s`;
+  const credits = usage?.credits as
+    { remaining: number; total: number } | null | undefined;
+
+  return (
+    <details className="dev">
+      <summary>Voor ontwikkelaars</summary>
+      <dl>
+        <dt>Avatar</dt>
+        <dd>
+          {config.avatarMode === "did"
+            ? "D-ID (echte stream, kost tegoed)"
+            : config.avatarMode === "anam"
+              ? "Anam (proef, kost Anam-minuten)"
+              : "gesimuleerd (geen D-ID)"}
+        </dd>
+        <dt>Nieuws</dt>
+        <dd>
+          {config.newsMode === "test"
+            ? "vaste testselectie"
+            : "actuele NOS-feed"}
+        </dd>
+        <dt>Presentator</dt>
+        <dd>{presenterState}</dd>
+        <dt>Promptversie</dt>
+        <dd>{fragment?.promptVersion ?? config.promptVersion}</dd>
+        {fragment && (
+          <>
+            <dt>Artikelversie</dt>
+            <dd>{fragment.articleVersion}</dd>
+            <dt>Antwoord</dt>
+            <dd>
+              {fragment.mode === "ai" ? "Gemini" : "terugval (regels)"} ·{" "}
+              {fragment.requestId.slice(0, 8)}
+            </dd>
+          </>
+        )}
+      </dl>
+      <div className="dev-actions">
+        <button
+          type="button"
+          className="btn"
+          aria-pressed={simulate === "gemini-error"}
+          onClick={() => onSimulate("gemini-error")}
+        >
+          Volgende vraag: Gemini-fout
+        </button>
+        <button
+          type="button"
+          className="btn"
+          aria-pressed={simulate === "server-error"}
+          onClick={() => onSimulate("server-error")}
+        >
+          Volgende vraag: serverfout
+        </button>
+        <button type="button" className="btn" onClick={onDrop}>
+          Verbinding verbreken
+        </button>
+        {config.avatarMode === "did" && (
+          <button type="button" className="btn" onClick={loadUsage}>
+            Verbruik ophalen
+          </button>
+        )}
+      </div>
+      {usage && (
+        <dl>
+          <dt>Gesproken video (gemeld door D-ID)</dt>
+          <dd>{seconds(usage.spoken)}</dd>
+          <dt>Verbinding open (eigen klok, schatting)</dt>
+          <dd>{seconds(usage.connected)}</dd>
+          <dt>Begrenzing</dt>
+          <dd>
+            {seconds(usage.counted)} van {seconds(usage.budget)}
+          </dd>
+          <dt>Tegoed volgens D-ID</dt>
+          <dd>
+            {credits ? `${credits.remaining} van ${credits.total}` : "onbekend"}
+          </dd>
+        </dl>
+      )}
+    </details>
   );
 }

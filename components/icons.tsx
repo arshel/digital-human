@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode } from "react";
 
 // Pictogrammen staan altijd naast of boven tekst, nooit alleen. Daarom aria-hidden.
 function Icon({ children, size = 24 }: { children: ReactNode; size?: number }) {
@@ -30,8 +30,24 @@ export function PlayIcon() {
 export function PauseIcon() {
   return (
     <Icon>
-      <rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none" />
-      <rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none" />
+      <rect
+        x="6"
+        y="5"
+        width="4"
+        height="14"
+        rx="1"
+        fill="currentColor"
+        stroke="none"
+      />
+      <rect
+        x="14"
+        y="5"
+        width="4"
+        height="14"
+        rx="1"
+        fill="currentColor"
+        stroke="none"
+      />
     </Icon>
   );
 }
@@ -172,6 +188,32 @@ export function SendIcon() {
   return (
     <Icon>
       <path d="M12 19V5M6 11l6-6 6 6" />
+    </Icon>
+  );
+}
+
+export function CaptionsIcon() {
+  return (
+    <Icon>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M7 11h4M13 11h4M7 15h7" />
+    </Icon>
+  );
+}
+
+export function TextSizeIcon() {
+  return (
+    <Icon>
+      <path d="M3 18l4-11 4 11M4.5 14h5M13 18l4-15 4 15M14.5 13h5" />
+    </Icon>
+  );
+}
+
+export function AccessibilityIcon() {
+  return (
+    <Icon>
+      <circle cx="12" cy="3.5" r="1.5" />
+      <path d="M5 8l7 2 7-2M12 10v5M8 22l4-7 4 7M9 9l-1 6M15 9l1 6" />
     </Icon>
   );
 }

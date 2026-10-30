@@ -5,10 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "node --test 'tests/*.test.ts'",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@heygen/liveavatar-web-sdk": "^0.0.19",
+    "@anam-ai/js-sdk": "^4.29.1",
+    "@d-id/client-sdk": "3.0.6",
     "next": "^15.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

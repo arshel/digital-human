@@ -1,195 +1,137 @@
-# Nova — AI virtual news anchor (prototype)
+# Nova — digitale nieuwsverteller (prototype)
 
-Webprototype voor de minoropdracht: een digitale nieuwspresentator die het nieuws begrijpelijk uitlegt aan laaggeletterde 18–24-jarigen. De app opent op de presentator en begint pas als je op "Start nieuws" drukt. Dan haalt Nova het actuele nieuws uit de NOS-feed, begroet je en noemt drie onderwerpen. Daarna kies je "Volgende onderwerp", vraag je via "Extra uitleg" om "Leg het makkelijker uit", "Wat betekent dit?", "Waarom is dit belangrijk?" of "Opnieuw uitleggen", typ je zelf een vraag ("Stel een vraag"), of kies je een onderwerp uit "Ander nieuws". Nova leest elk antwoord voor met de stem van de browser, en je leest mee in een wit tekstvak over het beeld. De avatar (LiveAvatar) toont beeld, maar beweegt zijn mond nog niet mee.
+Webprototype voor de minor Digital Humans: een AI-presentator die nieuws uitlegt aan laaggeletterde jongvolwassenen van 18 tot en met 24 jaar. Doel van het prototype: testen of deze groep nieuws beter begrijpt. Na de uitleg moet iemand kunnen vertellen wat er is gebeurd, wie erbij betrokken zijn, waarom het belangrijk is en wat nog onzeker is.
+
+De pagina opent direct op de presentator, met de titel van het eerste bericht, het label "AI-presentator" en één knop: **Start**. Pas daarna starten geluid, Gemini en (in de echte modus) de betaalde D-ID-stream. Nova vertelt kort de kern en stopt. Daarna kiest de gebruiker zelf: **Leg makkelijker uit**, **Wat betekent dit?**, **Vertel meer**, **Nog een keer**, **Stel een vraag** of **Volgend bericht**, plus **Pauze/Verder** en **Ondertiteling aan/uit**. Geen account.
+
+Terug naar de versie van vóór dit prototype (LiveAvatar + browserstem): `git checkout voor-did-prototype`.
 
 ## Starten
 
 ```bash
 npm install
-cp .env.local.example .env.local   # zet GEMINI_API_KEY en LIVEAVATAR_API_KEY erin
-npm run dev
+cp .env.example .env.local     # vul GEMINI_API_KEY in (en voor D-ID: zie hieronder)
+npm run dev                    # http://localhost:3000
 ```
 
-Open http://localhost:3000
+Standaard draait de **ontwikkelmodus** (`AVATAR_MODE=simulated`): D-ID wordt niet aangeroepen, de antwoordtekst staat in beeld, en een gele balk meldt dat de avatar gesimuleerd is. Heeft de browser een Nederlandse stem, dan leest die voor.
+
+### Echte D-ID-stream
+
+1. Zet `DID_API_KEY` in `.env.local`.
+2. Maak de agent aan (gratis, geen stream): `node --env-file=.env.local scripts/did-setup.mjs create`. Dit zet `DID_AGENT_ID`, `DID_CLIENT_KEY` en `DID_POSTER_URL` in `.env.local`. `... did-setup.mjs status` toont tegoed en agents.
+3. Controleer in D-ID Studio (Agents → Nova (prototype) → … → Embed) dat `http://localhost:3000` bij de toegestane domeinen staat. De client key werkt alleen vanaf die domeinen.
+4. Zet `AVATAR_MODE=did` en herstart `npm run dev`.
+
+Terug naar de ontwikkelmodus: `AVATAR_MODE=simulated` (of de regel weghalen) en herstarten. Alle variabelen staan met uitleg in [.env.example](.env.example).
+
+### Tests
+
+```bash
+npm test          # 39 tests, met nagemaakte D-ID-SDK: geen betaalde stream
+npm run typecheck
+```
 
 ## Structuur
 
 ```
-lib/news.ts                  haalt de NOS-feed op (15 min cache), zet drie openingsverhalen vooraan, terugval op demo
-data/articles.json           demo-artikelen voor als de feed niet bereikbaar is
-lib/ai.ts                    AI-service: generateNewsResponse(), systeeminstructie, artikelcontext
-lib/gemini.ts                het enige bestand dat Gemini kent (REST-aanroep, key uit .env.local)
-lib/fallback.ts              regelgebaseerde terugval als Gemini ontbreekt of faalt
-app/api/anchor/route.ts      serverroute: validatie, rate limit, roept generateNewsResponse() aan
-app/api/liveavatar/token/route.ts  sessietoken voor LiveAvatar (API-key blijft server-side)
-app/page.tsx                 gespreksstate, meeleesvak, bediening, panelen en bronnen
-components/AnchorStage.tsx   beeld van de presentator (LiveAvatar), past de video in zonder het gezicht te bedekken
-components/Panel.tsx         paneel als <dialog>: focus erin, Escape sluit, focus terug; op de telefoon een blad onderin
-components/ReadAlong.tsx     meeleesvak: hele antwoord, zo hoog als de tekst, scrollen of "Toon meer"
-components/useSpeech.ts      voorlezen met de browserstem (Web Speech API): per zin, echte pauze
-components/icons.tsx         pictogrammen (altijd naast tekst)
-app/globals.css              designtokens en layout
+data/test-articles.json        vaste testselectie: 3 NOS-berichten, brontekst + hulpnotities
+lib/articles.ts                berichten per modus (test of live), artikelversie (hash)
+lib/news.ts                    NOS-feed voor NEWS_MODE=live (15 min cache, terugval op demo)
+lib/prompt.ts                  systeemprompt, PROMPT_VERSION, opdracht per knop
+lib/ai.ts                      generateExplanation(): Gemini, of de terugval
+lib/gemini.ts                  het enige bestand dat Gemini kent (REST, modellenlijst)
+lib/fallback.ts                regelgebaseerde terugval: alleen zinnen uit de bron
+lib/spoken.ts                  gesproken tekst schoonmaken, zinnen splitsen
+lib/validate.ts                validatie van /api/explain
+lib/did.ts                     D-ID server-side: stem, begrenzing, tegoed, verbruik
+lib/testlog.ts                 logs/*.jsonl (metadata, geen gespreksinhoud)
+app/api/news                   berichten (zonder brontekst), modi, posterbeeld
+app/api/explain                uitleg bij één bericht en één knop
+app/api/did/session            agent-id en client key, pas na Start; begrenzing
+app/api/did/usage              verbruik melden en tonen
+app/page.tsx                   state, bediening, panelen, ontwikkelpaneel
+components/presenter/          gesimuleerde en D-ID-presentator achter één interface
+scripts/did-setup.mjs          agent aanmaken, tegoed tonen (alleen gratis calls)
+tests/                         node --test
 ```
 
-## De flow
+## Hoe een antwoord ontstaat
 
-1. De gebruiker drukt op "Start nieuws". Pas dan vraagt de pagina `/api/anchor` om een opening (met een lege gespreksgeschiedenis) en start de avatarsessie. Bij het laden van de pagina gebeurt nog niets.
-2. De route valideert de aanvraag (zie "Grenzen aan de API") en haalt de verhalen op via `getStories()` in `lib/news.ts`.
-3. De server geeft Gemini de systeeminstructie, een begrensde selectie artikelen (genummerd, met id, bron, datum en tekst) en het actieve onderwerp.
-4. Gemini antwoordt in JSON: `{ text, articleId }`. `lib/ai.ts` controleert dat `articleId` echt een van de geladen artikelen is en voegt `mode` toe (`ai` of `fallback`).
-5. De server stuurt ook de verhalen mee terug. De pagina toont `text` in het meeleesvak, leest het voor, zet het actieve artikel en laat de bron zien. Is `live` false (demo-artikelen), dan toont de pagina die niet; zie "Bronnen in beeld".
-6. Bij elke vraag stuurt de pagina de geschiedenis, het actieve `articleId` en de ids van de verhalen mee — nooit artikeltekst. Zo snapt Gemini "die eerste", "dit" en "volgende onderwerp", en blijft het gesprek bij dezelfde verhalen in dezelfde volgorde, ook als de feed intussen ververst.
+1. De pagina vraagt `/api/news`: titels, bron, datum en versie van de berichten. Geen brontekst, geen Gemini, geen stream.
+2. Na **Start** (of een knop) stuurt de pagina `articleId`, `action` (`core`, `simpler`, `meaning`, `more`, `question`), eventueel de vraag, en de laatste uitleg bij **dit** bericht naar `/api/explain`.
+3. De server zoekt het bericht op in de eigen gegevens. Het model kiest niet welk bericht het is, en bron, datum en link komen nooit uit het model.
+4. Gemini krijgt de systeemprompt, de brontekst, de hulpnotities en de opdracht voor die knop, en geeft `{"spoken": "..."}` terug. De server haalt markdown, URL's, emoji en regieaanwijzingen weg.
+5. De pagina toont dezelfde tekst als ondertiteling en laat de presentator die uitspreken.
 
-### De opening: precies drie verhalen
+**Volgend bericht** stopt de lopende uitleg, breekt een lopende aanvraag af, wist de context van het vorige bericht en negeert een antwoord dat te laat binnenkomt. Snel dubbelklikken geeft één aanvraag. **Nog een keer** maakt geen nieuwe aanvraag.
 
-De opening noemt bewust drie berichten van elk hooguit twee zinnen. Meer is voor de doelgroep (laaggeletterde 18–24-jarigen) te veel om te onthouden, en het houdt de uitzending kort. Het getal staat als `OPENING_COUNT` in `lib/news.ts`; `getStories()` zet die drie vooraan.
+### Inhoud vervangen
 
-Na de opening zit de gebruiker niet vast aan die drie. De rest van de feed staat erachter, dus "volgende onderwerp" loopt door naar bericht 4, 5 enzovoort, en een vraag over ander nieuws wordt gewoon beantwoord. Er staat expres geen onderwerpenteller in de interface: Nova is een presentator, geen lijst.
+De testberichten staan in [data/test-articles.json](data/test-articles.json): id, korte titel, oorspronkelijke titel, uitgever, URL, publicatie- en updatedatum, ophaaldatum, brontekst, en hulpnotities (kernfeiten, voorwaarden, onzekerheden). Vervang of voeg toe met dezelfde velden. De artikelversie rekent de server zelf uit. Een test controleert dat elk getal in de hulpnotities ook in de brontekst staat. Met `NEWS_MODE=live` gebruikt Nova de actuele NOS-feed (zonder hulpnotities).
 
-De opening hoort bij geen enkel artikel, dus `articleId` is dan `null` — ook in de terugval. De interface toont daardoor de drie bronnen van de opening, en bovenin staat "Het nieuws van vandaag". Elk volgend antwoord hoort bij één artikel en toont alleen die bron.
+### Testlog
 
-## Nieuws uit de NOS-feed
+`logs/answers.jsonl` bewaart per antwoord: request-id, bericht, artikelversie, promptversie, knop, `ai` of `fallback`, model, aantal woorden en gemiddelde woorden per zin. Bewust niet: de vraag van de gebruiker of de tekst van het antwoord. `logs/did-usage.jsonl` bewaart het verbruik. Beide staan in `.gitignore`.
 
-`lib/news.ts` haalt https://feeds.nos.nl/nosnieuwsalgemeen op de server op, zonder extra pakket. De XML wordt met een kleine eigen parser gelezen, met HTML naar platte alinea's.
+## D-ID: wat de integratie wel en niet kan
 
-- **Selectie:** alle berichten uit de feed, met vooraan de drie voor de opening: de nieuwste met minstens 400 tekens tekst, zodat er iets is om over door te vragen. Zijn dat er te weinig, dan vult het aan met kortere berichten.
-- **Cache:** 15 minuten. Zo haalt niet elke vraag de feed opnieuw op, en verschuiven de verhalen niet midden in een gesprek.
-- **Terugval:** is de feed niet bereikbaar (time-out na 6 s) of leeg, dan gebruikt Nova de demo-artikelen uit `data/articles.json`. De interface meldt dat. De fout staat in de terminal als `[news] NOS-feed niet gebruikt ...`, en na een minuut probeert de server het opnieuw.
-- **Bron:** elk verhaal heeft "NOS" als bron en de link naar het echte artikel.
-- **Grens:** Nova weet alleen wat in de feed staat. Bevat de feed maar een samenvatting, dan zegt Nova vaker dat ze iets niet weet. Volledige artikelen van nos.nl scrapen doen we bewust niet: dat breekt snel en het is hun content.
+Gecontroleerd in oktober 2026, in docs.d-id.com en in de typen van `@d-id/client-sdk` (vastgezet op 3.0.6):
 
-## Grenzen aan de context
+- **Route.** De oude Talks/Clips Streams heten bij D-ID "legacy"; nieuwe integraties gaan via de Agents SDK. We gebruiken de agent in **`ChatMode.DirectPlayback`**: alleen `speak()`, geen chat en geen LLM van D-ID. De tekst komt dus van onze Gemini-server. Dat werkt met Talks (V2)- en Clips (V3)-agents, niet met Expressive (V4).
+- **Sleutels.** `DID_API_KEY` blijft op de server. De browser krijgt na Start alleen de agent-id en de client key, de door D-ID bedoelde beperkte sleutel. De analytics van de SDK (Mixpanel) staan uit.
+- **Avatar.** Agent `v2_agt_pxhNLRTB`: een **Talks-agent (V2)** met een eigen afbeelding (jongeman met bril, grijze achtergrond). D-ID heeft het gezicht herkend (agentstatus `done`). Een andere agent: zet `DID_AGENT_ID`, `DID_CLIENT_KEY` en `DID_POSTER_URL` in `.env.local` (de waarden staan bij de agent in D-ID Studio, of maak er een met `did-setup.mjs create`). De eerder gemaakte Clips-agent `v2_agt_UCJHlUHn` ("Mary") bestaat nog als alternatief.
+- **Stem.** `nl-NL-MaartenNeural` (Microsoft, via D-ID), passend bij het mannelijke gezicht, tempo 1. Wordt per `speak()` meegestuurd, dus de Engelse stem die bij de agent zelf staat wordt niet gebruikt. Instelbaar met `DID_VOICE_ID` en `DID_VOICE_RATE`. Emoties en gezichtsuitdrukkingen sturen we niet aan: `sentiment` werkt alleen bij Expressive.
+- **Pauze.** D-ID kent geen pauze. Op een *fluent* stream stopt `interrupt()` het spreken echt, en **Verder** laat de rest opnieuw uitspreken, vanaf de zin waar het ongeveer was (geschat uit de verstreken tijd). Zonder fluent stream gaat alleen het geluid uit en loopt het fragment bij D-ID door tot het eind. Dat telt dan mee in het verbruik. Een Talks-agent heeft **geen** fluent stream: Pauze zet dan het geluid uit en toont de rustige idle-video in plaats van het pratende gezicht (zonder idle-video: stilstaand beeld). Bij Verder gaat het verder waar D-ID nu is, dus wat tijdens de pauze werd gezegd is gemist. Bij een vraag, een andere knop of Volgend bericht sluit de app de verbinding: dat stopt het oude fragment echt, en een nieuwe verbinding wordt gemaakt terwijl Gemini het antwoord schrijft. Zonder dat speelde D-ID het antwoord direct na het oude fragment af, zonder stopsignaal ertussen, en bleef het antwoord stil. Echt onderbreken kan alleen met een Clips-agent op een Pro-avatar (zoals `v2_agt_UCJHlUHn`, nog te bevestigen bij de eerste verbinding) of een Expressive-agent. Tussen fragmenten toont de app de idle-video van de agent.
+- **Ondertiteling.** D-ID meldt alleen begin en eind van het spreken, geen timing per zin, en `speak()` gaf bij onze Talks-agent geen duur terug. Daarom meten we zelf. De browser meet het geluidsniveau van de stream en schuift de markering een zin op na een stilte van minstens 300 ms (de pauze die de stem na een zin houdt). Dat is gemeten, niet geschat, maar een lange pauze midden in een zin kan de markering te vroeg laten opschuiven, en een korte pauze na een zin te laat. Bij "Nog een keer" uit het geheugen worden de gemeten tijden opnieuw gebruikt. Lukt meten niet (geen geluidsspoor of geen Web Audio), dan blijft het vak **Meeleestekst** zonder markering. Een SSML-pauze (`<break>`) na elke zin zou het zinseinde duidelijker maken, maar D-ID las die code bij onze Talks-agent hardop voor ("break time is gelijk aan…"), ondanks `ssml: true`. Daarom staat dat standaard uit (`DID_SENTENCE_BREAKS=1` om opnieuw te proberen).
+- **Nog een keer.** Een volledig gesproken fragment wordt in het geheugen van de browser opgenomen (MediaRecorder) en lokaal opnieuw afgespeeld, zonder nieuwe video bij D-ID. Het wordt nergens opgeslagen of verstuurd. Lukt opnemen niet, of staat `DID_LOCAL_REPLAY=0`, dan vraagt herhalen een nieuwe `speak()`.
+- **Opruimen.** De verbinding sluit bij het verlaten van de pagina, bij een verborgen tabblad en na 2 minuten stilstand. Die timer loopt alleen als Nova klaar of gepauzeerd is, nooit tijdens genereren, verbinden of spreken. Een verbinding die nog wordt opgebouwd als er wordt afgesloten, wordt geannuleerd (SDK 3.0.6: `disconnect()` annuleert een lopende `connect()`), en komt hij toch klaar, dan gaat hij meteen dicht. De volgende knop verbindt opnieuw.
+- **Stoppen vóór Nova begint.** Een verstuurde `speak()` die nog niet speelt, kan `interrupt()` niet stoppen. Bij een Talks-agent sluit de app dan de verbinding, anders zou het oude fragment alsnog klinken. Bij een fluent stream staat het geluid uit tot het oude fragment begint, dan volgt direct `interrupt()`, en pas na het einde daarvan gaat het nieuwe antwoord naar D-ID. Na elke wachtstap controleert de presentator of het fragment nog het nieuwste is.
+- **Metingen (ontwikkelserver).** Per klik één regel `[timing]` in de serverlog: cachestatus (`ready`, `pending` of `miss`), duur en afloop van elke modelpoging, tekst binnen, verbinden (en welk streamtype), `speak()` verstuurd en geaccepteerd, eerste beeld en eerste geluid, en waarom een verbinding dicht ging. Alleen getallen, geen tekst. Een klik die nooit hoorbaar werd, staat erbij als vervangen.
 
-Een gesprek mag niet onbeperkt groeien: elke vraag stuurt de hele context opnieuw mee, en dat kost tokens en quotum. De grenzen staan bovenin `lib/ai.ts`.
+### Kosten en verbruik
 
-- **Hooguit 15 berichten** in de prompt. Altijd de drie uit de opening (daar verwijst "die eerste" naar), plus het actieve bericht en de berichten daarna, aangevuld met de rest. Zo heeft "volgende onderwerp" altijd een bericht. De nummering is de positie in de hele lijst, dus verwijzingen blijven kloppen als de selectie schuift.
-- **Tekst per bericht:** het actieve bericht gaat vrijwel volledig mee (2400 tekens), de rest alleen de kern (700 tekens). Vraagt de gebruiker naar zo'n bericht, dan is het de beurt daarna actief en komt de rest van de tekst alsnog. Een ingekort bericht is in de prompt gemarkeerd, en Nova mag niet gokken naar wat er weggelaten is.
-- **Gespreksgeschiedenis:** de laatste 11 beurten (12 als er één bij moet omdat vraag en antwoord elkaar moeten afwisselen). Genoeg voor "leg dat nog eens uit", zonder dat een lang gesprek de aanvraag laat groeien.
+Het tegoed is ongeveer 20 minuten voor het hele prototype. Daarom:
 
-In een test met een feed van 20 berichten en 30 gespreksbeurten ging de prompt hiermee van ongeveer 12.000 naar 4.400 tokens.
+- In de ontwikkelmodus wordt D-ID niet aangeroepen. De interface, de bronnen en de antwoordlogica zijn dan volledig te testen.
+- De echte stream start alleen na **Start**.
+- Per `speak()` registreert de app de videoduur die de D-ID-API teruggeeft (**gemeten** door D-ID). Bij het sluiten registreert ze hoe lang de verbinding openstond (**schatting** met de klok van de browser).
+- `/api/did/session` start geen nieuwe sessie meer zodra de grootste van die twee boven `DID_BUDGET_SECONDS` uitkomt (standaard 1200).
+- Het ontwikkelpaneel (in `npm run dev`) toont beide getallen en het tegoed volgens D-ID (`GET /credits`).
+- Of D-ID de verbindingstijd of alleen de gesproken tijd factureert, staat niet in de documentatie. 20 minuten klok is dus niet gegarandeerd 20 minuten facturering.
 
-## Grenzen aan de API
+## Taal en journalistiek
 
-`app/api/anchor/route.ts` behandelt de body als `unknown` en valideert die voordat er iets mee gebeurt. Fout is fout: één duidelijke melding en HTTP 400, nooit een 500.
+De regels staan in `SYSTEM` in [lib/prompt.ts](lib/prompt.ts), gegroepeerd als rol, taal, opbouw, gesprek, journalistieke zorgvuldigheid, presentatie, veiligheid en antwoordformaat. Verander je de inhoud, verhoog dan `PROMPT_VERSION`. De opdracht per knop staat in `TASKS`. De basisuitleg is 60 tot 90 woorden: een instelbaar startpunt (`NOVA_CORE_WORDS`), geen onderzoeksuitkomst.
 
-- `messages` is een array van hooguit 40 beurten; elke beurt heeft rol `user` of `assistant` en tekst van 1 tot 2000 tekens.
-- `storyIds` is een array van hooguit 60 strings van elk hooguit 80 tekens.
-- `activeArticleId` is een string van hooguit 80 tekens, of `null`.
+Valt Gemini weg (geen sleutel, quotum, time-out), dan kiest de terugval in [lib/fallback.ts](lib/fallback.ts) zinnen uit de bron. Ze verzint niets, maar herschrijft ook niet. De interface meldt het dan: "De AI werkt nu niet".
 
-Daarnaast een rate limit van 20 aanvragen per minuut per IP, met HTTP 429 en een `retry-after`-header. Die telt in het geheugen van het serverproces: geen extra pakket, genoeg voor een prototype en een demo. **Voor een publieke productieomgeving is dit niet genoeg:** bij meerdere serverinstanties telt elke instantie apart, en bij een herstart begint de teller opnieuw. Daar hoort een gedeelde teller bij (bijvoorbeeld Upstash Redis) of de rate limit van het platform zelf (bijvoorbeeld Vercel Firewall).
+## Onderbouwing van de belangrijkste keuzes
 
-## AI-provider los van de app
+| Keuze | Bron |
+| --- | --- |
+| Uitleg pas als de gebruiker erom vraagt (Leg makkelijker uit, Wat betekent dit?, Vertel meer), zelf herhalen, zelf door naar het volgende bericht, geen vraag na elk antwoord | Interviews: vrijwillige verdieping, controle over herhaling (ontwerphypothese, nog te testen) |
+| Verzonnen voorbeelden als voorbeeld aangekondigd, volwassen toon, geen complimenten of straattaal | Interviews: herkenbare voorbeelden, volwassen aanspreektoon; factsheet: "neem de lezer serieus" |
+| A2, ongeveer 10 woorden per zin, actief, gewone woorden, steeds hetzelfde woord, geen beeldspraak, moeilijke woorden meteen uitgelegd, getallen in cijfers | Factsheet Eenvoudige taal (Stichting Lezen en Schrijven), vertaald naar spraak zonder zinnen mechanisch af te kappen |
+| Belangrijkste eerst, één bericht tegelijk, drie berichten in de test | Factsheet: boodschap bovenaan, niet meer dan 3 onderwerpen |
+| Verdana/Helvetica, 18–20 px, regelafstand 1,5, links uitgelijnd, elke zin op een eigen regel | Factsheet (Vorm), als webvertaling, niet als letterlijk voorschrift |
+| Alleen feiten uit de bron, zeggen wat onzeker is, toeschrijven, voorstel/besluit/geldt benoemen, geen eigen mening, geen verzonnen wederhoor, bron en datum zichtbaar, "Bekijk bron" | NVJ-code: zorgvuldig, onafhankelijk, bronvermelding, onzekerheid, fouten erkennen |
+| Bron, datum en link uit de servergegevens, nooit uit het model; antwoord altijd aan één bericht gekoppeld | NVJ-code (controleerbaar), en geen verzonnen links |
+| AI-label altijd in beeld, Nova doet niet alsof ze een mens is | NVJ-code (transparantie); doelgroeponderzoek: laag vertrouwen in AI-nieuws |
+| Vragen niet bewaard, geen account, geen persoonlijke gegevens vragen | NVJ-code (privacy) |
 
-De app roept alleen `generateNewsResponse()` in `lib/ai.ts` aan. Welk model erachter zit, staat alleen in `lib/gemini.ts`. Voor OpenAI of Claude schrijf je een bestand met dezelfde functie (`generateJson(system, messages)`) en pas je één import in `lib/ai.ts` aan.
+De voorkeur voor het uiterlijk van de avatar verschilde in de interviews. De huidige presentator is een tijdelijke, ondersteunde standaard, geen gekozen eindbeeld.
 
-- Er is geen npm-pakket voor Gemini nodig: de officiële REST-API wordt met `fetch` aangeroepen.
-- Het model is `gemini-3.1-flash-lite`. Dat staat vooraan en doet in normale omstandigheden al het werk, zodat het taalniveau en de toon gelijk blijven.
-- Is dat model op (gratis quotum, 429) of overbelast (503), dan probeert de app `gemini-3.6-flash`, `gemini-3.8-flash` en `gemini-3.5-flash`. Elk model heeft een eigen quotum, dus een demo valt niet stil door één vol model. Een model dat faalt gaat even in de wacht: na een 429 minstens een minuut, na een 503 dertig seconden.
-- Voor een gebruikerstest is dat een afweging. Antwoorden van een ander model klinken anders, en dat zie je niet in de interface, want `mode` blijft `ai`. Wil je zeker weten dat alle deelnemers dezelfde Nova kregen, zet dan `GEMINI_MODELS=gemini-3.1-flash-lite` in `.env.local` voor de duur van de test en kijk achteraf in de terminal of er is teruggevallen.
-- Een eigen lijst zet je met `GEMINI_MODELS` (komma-gescheiden, in volgorde van voorkeur). Lukt geen enkel model, dan volgt de regelgebaseerde terugval uit `lib/fallback.ts` en meldt de interface dat.
-- **Wachttijden:** een model krijgt 20 seconden, alle pogingen samen 30. Stond eerder op 10 en 25, maar dan kapte de app een traag antwoord van Google er zelf uit en telde dat als mislukt. Bij een trage eerste poging blijft er tijd over voor één ander model, niet meer. Een gebruiker kan dus in het slechtste geval een halve minuut wachten; dat is bewust, want de regelgebaseerde terugval schrijft hoorbaar slechter. Streaming moet die wachttijd later opvangen.
+Doelgroep: we houden **18–24 jaar** aan, zoals in ons doelgroeponderzoek. Het interviewdocument noemt 18–26 jaar en bevat iemand van 26. Dat verschil is bewust niet stilzwijgend aangepast. Het interviewdocument zelf staat niet in deze repository; de inzichten hier komen uit de samenvatting in de opdracht.
 
-## Klaar voor een avatar
+## Bekende beperkingen
 
-Het antwoord komt op één plek binnen, in `ask()` in `app/page.tsx`, als platte tekst zonder markdown:
-
-```ts
-const reply = await res.json();   // { text, articleId, mode, stories, live }
-setTurns(...)                     // { role: 'assistant', content: reply.text, articleId }
-speech.play(sentences)            // nu: de browserstem; later audio naar de avatar
-```
-
-`components/AnchorStage.tsx` weet niets van artikelen of AI: het krijgt alleen een startverzoek (`startRequest`) en de plekken waar tekst en knoppen over het beeld liggen (`keepClear`), en meldt zijn status terug. De avatarvideo staat er in de plaats van het "N"-gezicht zodra de sessie loopt; later krijgt het ook `text` om uit te spreken.
-
-### Avatar-zichttest (LiveAvatar)
-
-"Start nieuws" start ook een LiveAvatar-sessie en zet het avatarbeeld schermvullend in beeld, nooit vanzelf bij het laden. Voor de avatar is dit nog een zichttest: geen microfoon, geen spraak via de avatar en geen koppeling met Gemini. De avatar staat stil te wachten; het voorlezen doet de browser (zie "Voorlezen"). De nieuwsflow blijft er los van.
-
-- **LITE-modus**, want wij leveren later zelf de audio; LiveAvatar rendert alleen het beeld.
-- **Sandbox aan** (`is_sandbox: true`): kost geen credits, en de sessie stopt na ongeveer een minuut vanzelf. De avatar is Wayne (`dd73ea75-1218-4ef3-92ce-606d5f7fbc0a`), de enige sandbox-avatar.
-- **Andere avatar** met `LIVEAVATAR_AVATAR_ID` in `.env.local` (een ID zonder streepjes, zoals uit HeyGen, wordt omgezet naar de UUID-vorm die LiveAvatar verwacht). Dat kan niet in de sandbox en kost credits: LITE 1 credit per minuut; het gratis abonnement geeft 10 credits per maand en kan niet bijbetalen. Een eigen (niet-standaard) avatar vraagt bij LiveAvatar een betaald abonnement. Daarom: hooguit 3 minuten per sessie (`max_session_duration`), en de sessie stopt zodra het tabblad niet zichtbaar is. Controleren of een ID in LiveAvatar bestaat: `GET https://api.liveavatar.com/v1/avatars/{id}` met de header `X-API-KEY`.
-- **De key blijft op de server.** `app/api/liveavatar/token/route.ts` roept `POST https://api.liveavatar.com/v1/sessions/token` aan met de header `X-API-KEY` en geeft de browser alleen het kortlevende `session_token` terug. Geen `NEXT_PUBLIC_`-variabele, en de key staat nergens in de logs.
-- **De browser** laadt `@heygen/liveavatar-web-sdk` pas na de klik (dynamische import, dus niet in de eerste bundel), maakt `new LiveAvatarSession(sessionToken)` en roept `start()` aan. De SDK doet daarmee zelf `POST /v1/sessions/start` en verbindt met de LiveKit-room. Bij `SESSION_STREAM_READY` gaat de stream met `attach()` in het `<video>`-element.
-- **Geen microfoon.** De SDK start voice chat alleen als je `voiceChat` meegeeft in de config. Dat doen we niet, dus de browser vraagt geen toestemming.
-- **Statussen** in beeld: "Het beeld van de presentator start…", "De presentator werkt nu niet" (met "Probeer het opnieuw") en "Het beeld is gestopt" (de sandbox stopt na een minuut; met "Start het beeld opnieuw"). Een nieuwe sessie start alleen na zo'n klik. Komt er binnen 15 seconden geen beeld, dan stopt de sessie en verschijnt de foutmelding. Het verlaten van de pagina sluit de sessie af.
-- **Wat de SDK kan** (gecontroleerd in `@heygen/liveavatar-web-sdk` 0.0.19): `repeat(tekst)` laat de avatar tekst uitspreken, maar alleen in FULL-modus; in LITE-modus spreekt de avatar alleen audio die je zelf aanlevert (`repeatAudio`, PCM 24 kHz). Pauzeren en hervatten bestaan niet, alleen `interrupt()` (stoppen). Events voor ondertiteling: `AVATAR_SPEAK_STARTED`/`ENDED` en `AVATAR_TRANSCRIPTION`, maar alleen voor wat de avatar zelf zegt; voor onze tekst in LITE-modus levert de integratie geen ondertiteling. Een instelling voor de achtergrond heeft de SDK niet.
-- **Beeld zonder bedekt gezicht.** De video houdt altijd zijn eigen verhouding (16:9, niet uitgerekt). `AnchorStage` rekent uit hoe groot hij mag, zodat het onderwerp bovenin en de ondertiteling en knoppen onderin buiten het gezicht blijven. Het gezicht van Wayne is gemeten op de echte stream (haar vanaf ~10%, kin tot ~62% van de beeldhoogte); een andere avatar moet je opnieuw meten (`FACE` in `AnchorStage.tsx`). De video heeft `object-fit: contain` in een vlak met de verhouding van de stream zelf (gemeten bij `loadedmetadata`): niets afgesneden, niets uitgerekt, geen transform-vergroting. Naast de video staat één stilstaand, vervaagd beeld van de randen van het decor, zodat het beeld zonder naad doorloopt.
-- **Achtergrond.** Het kantoor achter Wayne zit in de video van de avatar zelf. Dat vervangen we niet met CSS: een rustige nieuwsstudio vraagt een andere avatar of een andere opname in HeyGen. Onze eigen achtergrond (zolang er geen beeld is) is een rustige, donkerblauwe studio zonder beweging of tekst.
-
-### Voorlezen
-
-`components/useSpeech.ts` leest elk nieuw antwoord voor met de Web Speech API van de browser. Geen extra dienst, geen sleutel en geen kosten; kiest Chrome een stem van Google, dan gaat de tekst daarvoor wel naar Google.
-
-- **Alleen een Nederlandse stem** (nl-NL gaat voor nl-BE). Heeft de browser die niet, dan is er geen afspeelknop en meldt "Hoe werkt dit?" dat voorlezen niet werkt. Een Engelse stem die Nederlands uitspreekt, is niet te volgen.
-- **Per zin een uiting.** De markering in het meeleesvak volgt het start-event van de stem per zin: echte koppeling, geen geschatte timing. Het tempo staat op 0,9 (`rate`): echt rustiger uitgesproken, niet alleen kortere zinnen.
-- **Pauze is echt stil.** "Pauze" breekt de stem af; "Verder luisteren" begint de onderbroken zin opnieuw. `pause()`/`resume()` van de browser gebruiken we niet: op Android stopt `pause()` alles, en stemmen van Google in Chrome hervatten soms niet. Aan het eind: "Opnieuw luisteren". Wil de browser eerst een klik, dan staat er "Luisteren".
-- **Een nieuwe vraag stopt het vorige antwoord** meteen; het nieuwe antwoord klinkt vanzelf (de gebruiker vroeg erom met een klik). Op iOS mag een pagina pas praten na een tik; de klik op "Start nieuws" geeft die toestemming.
-- **De mond beweegt niet mee.** LiveAvatar (LITE) beweegt alleen op audio die wij zelf als PCM aanleveren, en de browser geeft het geluid van zijn stem niet vrij. Zie "Volgende stappen".
-
-## Taalniveau
-
-De vier vervolgvragen onder "Extra uitleg" staan in `EXPLAIN` in `app/page.tsx`; "Volgende onderwerp" is een vaste knop. Het zijn gewone vragen, dus zowel de systeeminstructie in `lib/ai.ts` als de terugval in `lib/fallback.ts` herkent wat ze betekenen: makkelijker zeggen, uitleggen wat er gebeurd is (en wat moeilijke woorden betekenen), waarom het ertoe doet, het nog eens anders uitleggen, en doorgaan naar het volgende bericht. Ze gaan over het actieve onderwerp; is dat er nog niet, dan over bericht 1. Een keuze uit "Ander nieuws" stuurt "Vertel over onderwerp N." met dat artikel als actief, zodat de volledige tekst erbij zit.
-
-Nova schrijft voor laaggeletterde jongvolwassenen van 18 tot en met 24 jaar. Waarom die leeftijd staat in ons doelgroeponderzoek (`Doelgroeponderzoek_virtual_newsfluencer.docx`). Bij 66–75-jarigen komt lage taalvaardigheid vaker voor, en 25–44-jarigen zijn digitaal het vaardigst. Jongvolwassenen willen vaker betere uitleg en eenvoudiger taal, en volgen nieuws al via platforms en online makers. Daarom passen ze het best bij een digitale presentator. Het is een praktische keuze voor het prototype, geen bewezen grens: 25–44 is vergelijkingsgroep in de test. Ze schrijft in eenvoudig Nederlands, met A2 als uitgangspunt: B1 is voor veel gebruikers nog te moeilijk. Ze gebruikt korte, actieve zinnen (streven: hooguit 10 woorden, wel natuurlijke spreektaal) met één idee per zin. Ze gebruikt steeds hetzelfde woord voor hetzelfde begrip, vermijdt spreekwoorden en beeldspraak, en vermijdt afkortingen (of legt ze direct uit). Moeilijke woorden, namen en instanties legt ze direct uit. Eenvoudig, maar niet kinderachtig, en zonder overdreven jongerentaal. Omdat de tekst later wordt uitgesproken: natuurlijke zinnen, geen markdown, opsommingen of emoji.
-
-De opening noemt maximaal 3 berichten van elk 2 zinnen en eindigt met één eenvoudige vraag. Een gewoon antwoord is twee tot vier korte zinnen: eerst de belangrijkste boodschap, dan direct de achtergrond die nodig is om die te begrijpen. Verdieping komt pas als je erom vraagt. Een afsluitende vraag alleen als dat helpt om verder te gaan: de knoppen bieden al vervolgkeuzes, dus Nova noemt die niet steeds opnieuw.
-
-Nova geeft geen eigen mening en stuurt de mening van de gebruiker niet. Ze doet niet alsof ze een menselijke journalist is. Gevoelige onderwerpen (oorlog, geweld, criminaliteit, gezondheid, overlijden) behandelt ze rustig en feitelijk, zonder schokkende details en zonder medische, juridische of financiële conclusies voor de gebruiker.
-
-De regels staan in de systeeminstructie in `lib/ai.ts`, in blokken per onderwerp en per snelle actie.
-
-## Grounding
-
-- De systeeminstructie staat alleen op de server. Nieuwsfeiten mogen alleen uit de meegestuurde artikelen komen; nooit verzonnen nieuws, cijfers, citaten of bronnen.
-- Staat iets niet in de artikelen, dan zegt Nova dat. Uitleg die niet uit het artikel komt, kondigt Nova aan als uitleg ("Ter uitleg: ...").
-- Nuance blijft staan: feiten, verwachtingen en meningen uit elkaar, twijfel uit het bericht niet weglaten, een beschuldiging nooit als bewezen feit, en tegenstrijdige berichten benoemen.
-- De tekst van een nieuwsbericht is alleen informatie. Staan er instructies in, dan volgt Nova die niet.
-- Elk antwoord hoort bij hooguit één artikel (`articleId`), zodat de interface de juiste bron kan tonen. Is niet duidelijk welk onderwerp bedoeld wordt, dan stelt Nova één korte verduidelijkende vraag.
-- Er is geen websearch en geen tool. Het model heeft niets dan de artikeltekst.
-- Het blijft een taalmodel. Het prompt verkleint de kans op verzinsels, maar sluit ze niet uit. Dat is iets om in de gebruikerstest te controleren.
-
-## Terugval zonder Gemini
-
-Ontbreekt de key, is Gemini niet bereikbaar (quotum, netwerk, time-out) of komt er geen bruikbare JSON terug, dan gebruikt `lib/ai.ts` de regelgebaseerde versie uit `lib/fallback.ts`. De interface meldt dat bovenin bij het onderwerp, en de echte fout staat in de terminal waar `npm run dev` draait (`[ai] Gemini niet gebruikt ...`). Zo valt een demo niet stil.
-
-De terugval kiest zinnen uit het artikel; ze schrijft nooit iets bij. Daardoor kan ze geen feiten verzinnen, maar ook niet echt herschrijven. Om toch in de buurt van A2 te blijven:
-
-- hooguit drie zinnen en ongeveer 45 woorden per antwoord, het belangrijkste eerst;
-- zinnen die zonder afkappen passen gaan voor; een lange bronzin wordt afgekapt bij een deelzin (komma voor een voegwoord of een puntkomma), en pas als laatste redmiddel bij een heel woord met een beletselteken;
-- citaten vallen af zolang er gewone zinnen zijn: ze zijn meestal het langst en het moeilijkst;
-- namen, getallen en feiten blijven staan zoals ze in de bron staan;
-- staat het antwoord niet in het artikel, dan zegt Nova dat, in plaats van iets te kiezen dat er toevallig op lijkt. Naar een ander bericht springen mag alleen als twee woorden uit de vraag daar raken;
-- elk antwoord eindigt met een vaste, eenvoudige vraag (Gemini doet dat alleen als het helpt).
-
-De terugval herkent ook "Opnieuw uitleggen" (dan de kern van het bericht nog eens) en "Vertel over onderwerp 12" uit de lijst "Ander nieuws".
-
-De opening van de terugval noemt dezelfde drie berichten als die van Gemini en geeft ook `articleId: null`, zodat de bronweergave in beide gevallen gelijk is. De terugval schrijft hoorbaar minder goed dan Gemini; dat is bewust zichtbaar in de interface.
-
-## Bronnen in beeld
-
-- **Onderwerp bovenin:** de titel van het actieve bericht, met "AI-presentator" erboven.
-- **"Bekijk de bron"** naast de knoppen (op de telefoon eronder): opent bron, publicatiedatum en de link naar het oorspronkelijke bericht. Bij de opening zijn dat de drie berichten van de opening; daarna alleen het actieve verhaal. Niets wordt aangevuld: ontbreekt een tijd, dan staat er alleen een datum.
-- **Geen voorbeeldnieuws.** Is de NOS-feed niet bereikbaar, dan stuurt de server demo-artikelen met verzonnen bronnen mee (`live: false`). Deze interface toont die niet, maar meldt dat de nieuwsbron niet bereikbaar is, met "Opnieuw proberen".
-- **"Hoe werkt dit?"** legt uit dat Nova een AI-presentator is, dat het nieuws uit de NOS-feed komt maar Nova geen dienst van de NOS is, dat AI fouten kan maken, en dat Nova voorleest met de stem van de browser zonder dat de mond meebeweegt.
-
-## Designkeuzes
-
-Op de branch `design-preview`; `main` heeft nog het vorige ontwerp.
-
-- **De presentator vult het scherm.** Onder een smalle bovenbalk (Nova, "Nieuws met uitleg", "Ander nieuws", "Hoe werkt dit?") staat het beeld. Linksboven het onderwerp (op een liggend scherm links van het gezicht, zodat de presentator zo groot mogelijk kan), onderin een compact meeleesvak en daaronder de bediening: de afspeelknop, "Stel een vraag", "Extra uitleg", "Volgende onderwerp" en "Bekijk de bron". Altijd op dezelfde plek. Geen kaarten, zijbalk of chatvenster.
-- **Compacte bediening.** Pictogram (20 px) naast het label, minstens 48 px hoog, 12 px boven en onder, geen vaste hoogte: bij grotere tekst groeit een knop mee. Op een smal scherm staan de knoppen in twee kolommen en mag een label over twee regels; is een kolom te smal, dan één kolom. Letters worden nooit kleiner. De afspeelknop is zo breed als zijn langste label, zodat er niets verschuift als "Pauze" "Verder luisteren" wordt. Gemeten met een nep-stream: op 1280×720 ging de presentator van 647×364 naar 1179×663 px, op 1440×900 van 1199×675 naar 1440×810. Op een telefoon van 390 px staat de presentator nu helemaal in beeld.
-- **Zelf starten.** Bij het laden gebeurt niets; "Start nieuws" is de enige actie. Pas dan gaan de eerste vraag naar Gemini en de avatarsessie van start.
-- **Leesbaarheid** (richtlijnen van Stichting Lezen en Schrijven): Verdana (anders Helvetica of Arial), nergens kleiner dan 16 px, regelafstand 1,5, tekst links uitgelijnd, zwart op wit. Het meeleesvak is een wit, dekkend vlak met zwarte tekst. In uitlegtekst staat elke zin op een eigen regel, en de belangrijkste informatie is vet: bij een antwoord de eerste zin, omdat Nova met de belangrijkste boodschap begint.
-- **Meelezen zonder bladzijden.** Het hele antwoord staat in één vak, elke zin op een eigen regel. Het vak is zo hoog als de tekst (geen leeg wit vlak bij "Goedemorgen."), tot drie regels (twee op een laag scherm); is het meer, dan scrolt het vak en toont "Toon meer" alles. Niets wordt afgekapt. Tijdens het voorlezen staat de zin die klinkt lichtblauw met een streep ervoor en blijft die in beeld. De ruimte voor het vak ligt vast, zodat de presentator en de knoppen niet verspringen als een antwoord korter of langer is.
-- **Panelen** voor "Extra uitleg", "Stel een vraag", "Ander nieuws", "Hoe werkt dit?" en de bron: native `<dialog>`, met Escape en "Sluiten", en de focus gaat terug naar de knop die het opende. Op de telefoon een blad vanaf de onderkant dat boven het schermtoetsenbord blijft.
-- **Kleur.** Zwart op wit voor alle tekst, donkerblauw (#102A5C) voor de belangrijkste actie ("Start nieuws", "Extra uitleg") en de rand van de afspeelknop, lichtblauw achter de zin die klinkt, en een rustige donkerblauwe studio als eigen achtergrond achter de presentator.
-- **Beweging.** Geen decoratieve animatie en geen bewegende achtergrond; alleen een rustig knipperend puntje terwijl Nova een antwoord maakt, en `prefers-reduced-motion` zet dat uit.
-- **Telefoon.** Hetzelfde ontwerp: het meeleesvak over de volle breedte met 16 px aan beide kanten, de knoppen in twee kolommen binnen bereik van de duim, de bovenbalk op één rij vanaf 390 px. Past de hele presentator tussen onderwerp en tekst, dan staat hij daar helemaal; anders wordt hij zo nodig kleiner en blijft in elk geval het gezicht vrij. Veilige schermranden (ook onderin, `safe-area-inset-bottom`) en het schermtoetsenbord zijn meegenomen; op een laag scherm of met grote tekst scrolt de pagina.
-
-## Volgende stappen
-
-- Streaming response, zodat het antwoord meteen begint te lopen.
-- Meer feeds (bijv. NOS Sport of Tech) en een slimmere selectie in `lib/news.ts`, bijvoorbeeld op wat jongeren raakt.
-- De mond van de avatar laten meebewegen: TTS-audio (PCM 24 kHz) per zin naar de LiveAvatar-sessie (LITE, `repeatAudio`) in plaats van de browserstem, en daarna uit de sandbox (die stopt na een minuut). De afspeelknop en de markering per zin kunnen blijven; de SDK kan alleen stoppen (`interrupt()`), dus "Verder luisteren" stuurt dan de onderbroken zin en de rest opnieuw.
-- Een rustige nieuwsstudio als decor: een andere avatar of opname in HeyGen.
-- Vergelijkende gebruikerstest met mensen met leesproblemen uit meerdere leeftijdsgroepen, met 25–44 als belangrijkste vergelijking. Ze krijgen dezelfde onderwerpen, met en zonder avatar. Meten: begrip (de kern navertellen), benodigde hulp, of ze terugkomen, en of ze de rol van AI en de bronnen begrijpen.
+- **Geen echte D-ID-stream getest.** Het account had op 27 oktober 2026 0 credits (plan `deid-trial`), en betaalde streams starten we niet automatisch. De stemkwaliteit van Maarten, de lipsync op deze foto, MediaRecorder op de D-ID-stream en de werkelijke facturering zijn dus nog onbekend.
+- **Pauze bij deze agent is geen echte pauze** (Talks heeft geen interrupt): het fragment loopt bij D-ID door en telt mee in het verbruik. Houd fragmenten daarom kort (de basisuitleg is 60 tot 90 woorden, ongeveer 30 seconden).
+- **Zinslengte.** Gemini 3.1 Flash Lite houdt zich niet altijd aan ongeveer 10 woorden per zin: bij "Wat betekent dit?" en "Vertel meer" gemiddeld 13 tot 16. Volg dat in `wordsPerSentence` in het testlog.
+- **Gemini kan traag zijn.** Soms 10 tot 30 seconden, of een time-out gevolgd door de terugval. Voor Start merk je dat niet: de basisuitleg van het eerste bericht wordt al gemaakt zodra de pagina de berichten ophaalt, en die van het volgende bericht terwijl de gebruiker luistert. Daarna wordt hij bewaard in het geheugen van de server (per artikel- en promptversie, alleen de basisuitleg, geen vragen; zie `lib/corecache.ts`). Iedereen hoort zo ook dezelfde kern. De andere knoppen wachten nog wel op Gemini. Sneller: zet `GROQ_API_KEY` (gratis, console.groq.com) en/of `MISTRAL_API_KEY` in `.env.local`. De volgorde is Groq, Mistral, Gemini; alleen aanbieders met een sleutel doen mee, en de volgende neemt het over als de eerste faalt of te traag is (`lib/ai.ts`, `lib/groq.ts`, `lib/mistral.ts`). Het testlog toont per antwoord welk model het was. Let op: de gratis tier van Mistral mag invoer gebruiken voor training, ook vragen van deelnemers. Zet voor een gebruikerstest `GEMINI_MODELS=gemini-3.1-flash-lite`.
+- **Herhalen uit het geheugen.** Of D-ID dat in de voorwaarden toestaat, hebben we niet kunnen bevestigen. Uit te zetten met `DID_LOCAL_REPLAY=0`.
+- **Geen spraakinvoer.** De bestaande infrastructuur ondersteunt dat niet betrouwbaar, dus geen microfoonknop.
+- **Rate limit en verbruiksteller** staan in het geheugen van één serverproces en in lokale bestanden: genoeg voor een lokaal prototype, niet voor productie.
+- **Brontekst in de repository.** `data/test-articles.json` bevat de feedtekst van drie NOS-berichten. Is de repository openbaar, overweeg dan dat bestand lokaal te houden.
+- **Bekende kwetsbaarheden in Next.js 15.5.25** (`npm audit`) bestonden al. We houden de frameworkversie bewust gelijk; los dit op met de kleinste veilige stap (`npm audit fix` zonder `--force`).

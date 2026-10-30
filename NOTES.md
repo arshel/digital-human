@@ -6,17 +6,20 @@ Lees dit samen met de README. De README beschrijft wat er staat, dit bestand bes
 
 Prototype voor de minor Digital Humans (sept 2026 - feb 2027). Opdracht (Fontys Journalistiek): een virtual newsfluencer die ingewikkeld nieuws begrijpelijk uitlegt aan mensen die laaggeletterd zijn of moeite hebben met digitale informatie, met een conversational interface en zichtbare bronnen. De opdracht noemt geen leeftijd. Onze doelgroep: laaggeletterde 18–24-jarigen, oftewel jongvolwassenen die moeite hebben met geschreven nieuws (onderbouwing in ons doelgroeponderzoek, `Doelgroeponderzoek_virtual_newsfluencer.docx`). Beoordeling loopt via portfolio, dus keuzes moeten uit te leggen zijn — bij een wijziging in de architectuur of het design de reden hier of in de README bijschrijven.
 
-Fase nu: nieuws- en chatflow werkend op Gemini (free tier) met live nieuws uit de NOS-feed; terugval op regels en demo-artikelen. Avatar: zichttest met LiveAvatar (beeld); voorlezen met de browserstem, nog zonder bewegende mond.
+Fase nu (27 okt 2026): testprototype op `design-preview`. Vaste testselectie van drie NOS-berichten, uitleg per knop door Gemini, presentatie via D-ID (Talks-agent `v2_agt_pxhNLRTB` met eigen foto, stem Maarten, DirectPlayback). Standaard in de ontwikkelmodus zonder D-ID. De echte D-ID-stream is nog niet getest: het account had 0 credits. De vorige versie (LiveAvatar + browserstem) staat onder de tag `voor-did-prototype`.
 
 ## Harde regels
 
 - Nova gebruikt voor nieuwsfeiten uitsluitend de tekst van de geladen artikelen. Geen websearch, geen tools, geen eigen kennis over actualiteit. Uitleg mag, maar als uitleg aangekondigd.
-- Elk antwoord hoort bij hooguit één artikel en meldt welk (`articleId`). Alleen de opening gaat over alle verhalen.
-- Systeeminstructie en `GEMINI_API_KEY` blijven server-side (`lib/ai.ts`, `lib/gemini.ts`). De client stuurt alleen de gespreksgeschiedenis en het actieve `articleId`. Hetzelfde geldt voor `LIVEAVATAR_API_KEY`: die staat alleen in de tokenroute, en de browser krijgt alleen een kortlevend sessietoken. Nooit een `NEXT_PUBLIC_`-variabele voor een sleutel.
-- Bronnen blijven zichtbaar: "Bekijk de bron" bij het actieve bericht opent bron, publicatiedatum en de link naar het origineel. Bij de opening (`articleId: null`) zijn dat de drie bronnen van de opening. Geen verzonnen gegevens en geen demo-artikelen als echt nieuws.
+- Elk antwoord hoort bij precies één bericht. Dat bepaalt de server (`articleId` uit de aanvraag), niet het model. Bron, datum en link komen uit de servergegevens, nooit uit Gemini.
+- Systeemprompt (`lib/prompt.ts`), `GEMINI_API_KEY` en `DID_API_KEY` blijven server-side. De browser krijgt van D-ID alleen de agent-id en de client key (de beperkte sleutel die D-ID voor de browser bedoelt), en pas na Start. Nooit een `NEXT_PUBLIC_`-variabele voor een sleutel.
+- Bronnen blijven zichtbaar: bron en datum bij de titel, "Bekijk bron" opent het origineel. Geen verzonnen gegevens en geen demo-artikelen als echt nieuws.
+- Inhoud van `lib/prompt.ts` veranderd? Dan `PROMPT_VERSION` verhogen. Het testlog moet kunnen zeggen op welke prompt en welke artikelversie een antwoord was gebaseerd.
+- Geen gespreksinhoud bewaren: het testlog bevat alleen metadata.
+- Geen betaalde D-ID-stream in automatische tests. De ontwikkelmodus (`AVATAR_MODE=simulated`) roept D-ID niet aan.
 - Staat een antwoord niet in de artikelen, dan zegt Nova dat expliciet. Dat gedrag niet wegpoetsen om antwoorden vloeiender te maken.
-- De app praat alleen met `generateNewsResponse()` in `lib/ai.ts`, nooit direct met Gemini. Alleen `lib/gemini.ts` kent de provider.
-- AI-logica en avatar blijven los van elkaar. De avatar krijgt tekst en bron binnen, maar weet niets van artikelen of het model.
+- De app praat alleen met `generateExplanation()` in `lib/ai.ts`, nooit direct met Gemini. Alleen `lib/gemini.ts` kent de provider.
+- AI-logica en avatar blijven los van elkaar. De presentator (`components/presenter/`) krijgt alleen zinnen om uit te spreken, en weet niets van berichten of het model.
 
 Gewijzigd op 15 sept 2026: de app opent nu direct op de presentator in plaats van op een artikelkeuze. De oude regels "één artikel per prompt" en "wisselen wist de geschiedenis" zijn vervallen: het gesprek loopt door over drie verhalen, zoals een echte uitzending. Om bronvermenging te voorkomen hoort nu elk antwoord bij hooguit één artikel.
 
@@ -56,15 +59,25 @@ Gewijzigd op 6 okt 2026: nieuw ontwerp op de branch `design-preview` (`main` hou
 Gewijzigd op 6 okt 2026: `LIVEAVATAR_AVATAR_ID` maakt een andere avatar mogelijk (gevraagd: HeyGen-avatar `a50e81ea…`). Standaard blijft Wayne in de sandbox, omdat alleen die gratis is; een andere avatar kost credits (LITE 1 per minuut) en een eigen avatar een betaald abonnement. Met een eigen avatar: plafond van 3 minuten per sessie en stoppen zodra het tabblad verborgen is. Let op: de plek van het gezicht (`FACE` in `AnchorStage.tsx`) is gemeten op Wayne; bij een andere avatar opnieuw meten.
 
 Gewijzigd op 8 okt 2026: compactere bediening op `design-preview`, omdat het witte tekstvak en de grote knoppen te veel van de presentator bedekten. Het meeleesvak toont het hele antwoord (geen bladzijden met "Terug"/"Verder" en teller meer), is zo hoog als de tekst tot drie regels en scrolt daarna, met "Toon meer". De ruimte ervoor ligt vast, zodat presentator en knoppen niet verspringen. Knoppen: pictogram naast het label, 48 px hoog; op de telefoon twee kolommen. Bovenbalk en onderwerp compacter, geen line-clamp meer. Nieuw: voorlezen met de Web Speech API van de browser (`useSpeech`), met een echte afspeelknop (Pauze / Verder luisteren / Opnieuw luisteren). Waarom de browserstem: hij werkt nu, zonder nieuwe dienst, sleutel of kosten, met echte events per zin en een echte pauze. Waarom niet via de avatar: LITE beweegt alleen op eigen PCM-audio, en daar is een TTS-dienst voor nodig; de sandbox stopt bovendien na een minuut. Nadeel: de mond van de avatar beweegt niet mee, en de stem verschilt per browser. Zonder Nederlandse stem geen afspeelknop. De achtergrond van de frontend is een rustige donkerblauwe studio; het kantoor zit in de video van de avatar en blijft staan (dat vraagt een andere avatar in HeyGen).
+Gewijzigd op 27 okt 2026: testprototype met D-ID. Waarom: de opdracht vraagt een sprekende avatar met lipsync en een vergelijkbare testervaring.
+- De app opent op het eerste bericht van een vaste testselectie (`NEWS_MODE=test`, `data/test-articles.json`). Na Start vertelt Nova de kern en stopt. Daarna kiest de gebruiker zelf; Nova stelt niet na elk antwoord een vraag. De oude opening met drie koppen en "Ander nieuws" is vervallen. De NOS-feed blijft beschikbaar als `NEWS_MODE=live`.
+- `/api/anchor` (vrije chat, Gemini kiest het artikel) is vervangen door `/api/explain`: één bericht, één knop (`core`, `simpler`, `meaning`, `more`, `question`). Zo kan een antwoord nooit bij een andere bron belanden.
+- Nieuwe systeemprompt in `lib/prompt.ts`, op basis van de factsheet Eenvoudige taal en de NVJ-code. Na tests aangescherpt: geen "de NOS meldt" bij onze eigen hulpnotities, oordelen alleen toegeschreven, "mogelijk" niet weglaten.
+- D-ID vervangt LiveAvatar en de browserstem: een Clips-agent in `ChatMode.DirectPlayback` (alleen `speak()`, geen LLM van D-ID). Ontwikkelmodus is de standaard. Details en beperkingen staan in de README, onder "D-ID: wat de integratie wel en niet kan".
+- D-ID-calls: gratis calls (tegoed, agent aanmaken, lijsten) mag Claude zelf doen via `scripts/did-setup.mjs`. Een betaalde stream start alleen de gebruiker zelf.
+
 ## Codeconventies
 
 - Lean. Geen abstracties die nog niks abstraheren, geen defensieve wrappers, geen helperlaag voor iets dat één keer voorkomt.
-- State staat in `app/page.tsx`. Pas opsplitsen in componenten als dat bestand echt onleesbaar wordt, niet uit principe. Uitzonderingen: `components/AnchorStage.tsx` (de echte avatar), `components/Panel.tsx` (vijf panelen, één gedrag voor focus en Escape), `components/ReadAlong.tsx` (het meeleesvak: meten, scrollen, "Toon meer") en `components/useSpeech.ts` (de browserstem).
+- State staat in `app/page.tsx`. Pas opsplitsen in componenten als dat bestand echt onleesbaar wordt, niet uit principe. Uitzonderingen: `components/presenter/` (gesimuleerde en D-ID-presentator achter één interface, met tests) en `components/Panel.tsx` (panelen, één gedrag voor focus en Escape).
+- Tests: `npm test` (node --test, TypeScript zonder build). Bestanden die getest worden importeren elkaar met een `.ts`-extensie en gebruiken geen `@/`-alias.
 - Directe property access boven ketens van null-checks; alleen guarden waar iets echt kan ontbreken.
 - CSS in `app/globals.css` met de tokens uit `:root`. Geen extra kleuren of radii introduceren zonder dat er een reden voor is.
 - Code en identifiers in het Engels, teksten in de interface in het Nederlands.
 
 ## Designkeuzes die vastliggen
+
+Let op (27 okt 2026): de layout van het testprototype wordt apart herzien (Codex). De punten hieronder komen uit het vorige ontwerp; de eisen voor het prototype (licht, rustig, één accentkleur, 18–20 px, bediening altijd in beeld) staan in de README.
 
 - De presentator vult het scherm; de gebruiker start zelf ("Start nieuws"). Geen keuzescherm, geen nieuwskaarten, geen permanent chatvenster.
 - Meeleesvak en bediening onderin, altijd op dezelfde plek; nooit tekst of knoppen over het gezicht.
@@ -77,7 +90,7 @@ Gewijzigd op 8 okt 2026: compactere bediening op `design-preview`, omdat het wit
 
 1. Streaming response, zodat het antwoord meteen begint te lopen.
 2. Meer feeds (bijv. NOS Sport of Tech) en tekst verder opschonen voordat die in de prompt gaat.
-3. Realtime avatar (HeyGen LiveAvatar) in `components/AnchorStage.tsx`: het beeld staat (zichttest) en de browser leest voor. Volgende stap is een meebewegende mond: TTS-audio (PCM 24 kHz) per zin naar de LITE-sessie via `repeatAudio` in plaats van de browserstem, en daarna uit de sandbox. De afspeelknop blijft (de SDK kan alleen `interrupt()`, dus verder = de onderbroken zin en de rest opnieuw sturen), de video niet meer gedempt, en de microfoon (voice chat) pas als Nova niet praat. Voor een nieuwsstudio als decor: een andere avatar of opname in HeyGen.
+3. Eerste echte D-ID-test (kort, door de gebruiker zelf): tegoed kopen, `AVATAR_MODE=did`, één bericht met Start, Pauze, Verder en Nog een keer. Daarbij vastleggen: fluent of legacy (ontwikkelpaneel), stemkwaliteit van Fenna, of herhalen uit het geheugen werkt, en het verbruik volgens D-ID tegenover onze telling.
 4. Vergelijkende gebruikerstest (uit het doelgroeponderzoek). Deelnemers: mensen met leesproblemen uit een jongere, middelbare en oudere leeftijdsgroep, met 25–44 als belangrijkste vergelijking.
    - Dezelfde nieuwsonderwerpen, en uitleg door de avatar vergelijken met dezelfde gesproken uitleg zonder avatar.
    - Meten: begrip (deelnemers vertellen de kern na, naar het Pharos-principe), hoeveel hulp nodig is, en of ze het opnieuw willen gebruiken.
@@ -85,6 +98,6 @@ Gewijzigd op 8 okt 2026: compactere bediening op `design-preview`, omdat het wit
 
 ## Niet doen
 
-- Geen extra dependencies zonder reden; nu alleen next, react, react-dom en `@heygen/liveavatar-web-sdk` (alleen dynamisch geladen in `AnchorStage`). Kwetsbaarheden oplossen met de kleinste veilige stap: `postcss` staat in `overrides` op ^8.5.28 omdat Next 15.5.25 8.4.31 pint. Niet blind `npm audit fix --force`, dat trekt Next naar een nieuwe major.
-- Geen API-calls uitvoeren namens mij — geef het commando of de payload, ik run het en plak het resultaat terug.
+- Geen extra dependencies zonder reden; nu alleen next, react, react-dom en `@d-id/client-sdk` (vast op 3.0.6, alleen dynamisch geladen in `components/presenter/did.ts`). Kwetsbaarheden oplossen met de kleinste veilige stap: `postcss` staat in `overrides` op ^8.5.28 omdat Next 15.5.25 8.4.31 pint. Niet blind `npm audit fix --force`, dat trekt Next naar een nieuwe major.
+- Geen betaalde API-calls uitvoeren namens mij (D-ID-streams). Gratis calls mogen; voor de rest: geef het commando of de payload, ik run het en plak het resultaat terug.
 - Geen echte bronnamen aan de verzonnen demo-artikelen hangen. Echte bronnaam (NOS) alleen bij berichten die echt uit de feed komen.

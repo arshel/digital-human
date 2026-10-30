@@ -2,7 +2,17 @@
 // process.env. Een andere provider (OpenAI, Claude) = een bestand met dezelfde
 // functie-vorm, en de import in lib/ai.ts omzetten.
 
-type Message = { role: 'user' | 'assistant'; content: string };
+export type Message = { role: 'user' | 'assistant'; content: string };
+
+// Eén poging bij één model, voor de metingen: hoe lang, en hoe het afliep ('ok', 'timeout', of de
+// HTTP-status). Geen tekst.
+export type Attempt = { provider: string; model: string; ms: number; result: string };
+
+export function attemptResult(err: unknown) {
+  if (err instanceof Error && (err.name === 'TimeoutError' || /timeout|timed out/i.test(err.message))) return 'timeout';
+  const status = err instanceof Error ? err.message.match(/^(\d{3})\b/) : null;
+  return status ? status[1] : 'error';
+}
 
 // Nova draait op Gemini 3.1 Flash Lite. Dat model staat vooraan en doet het werk, zodat
 // het taalniveau en de toon in een gebruikerstest niet per antwoord verschillen.
@@ -32,7 +42,8 @@ class ModelError extends Error {
   }
 }
 
-export async function generateJson(system: string, messages: Message[]): Promise<string> {
+// Geeft ook terug welk model antwoordde, zodat het testlog laat zien of er is teruggevallen.
+export async function generateJson(system: string, messages: Message[], attempts: Attempt[] = []): Promise<{ text: string; model: string }> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY ontbreekt in .env.local');
 
@@ -45,9 +56,13 @@ export async function generateJson(system: string, messages: Message[]): Promise
   for (const model of queue) {
     const remaining = deadline - Date.now();
     if (remaining < 2000) break;
+    const started = Date.now();
     try {
-      return await callModel(model, key, system, messages, remaining);
+      const text = await callModel(model, key, system, messages, remaining);
+      attempts.push({ provider: 'gemini', model, ms: Date.now() - started, result: 'ok' });
+      return { text, model };
     } catch (err) {
+      attempts.push({ provider: 'gemini', model, ms: Date.now() - started, result: attemptResult(err) });
       errors.push(`${model}: ${err instanceof Error ? err.message : err}`);
       if (err instanceof ModelError && err.cooldownMs > 0) {
         coolingDown.set(model, Date.now() + err.cooldownMs);
