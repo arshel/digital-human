@@ -6,17 +6,17 @@ Lees dit samen met de README. De README beschrijft wat er staat, dit bestand bes
 
 Prototype voor de minor Digital Humans (sept 2026 - feb 2027). Opdracht (Fontys Journalistiek): een virtual newsfluencer die ingewikkeld nieuws begrijpelijk uitlegt aan mensen die laaggeletterd zijn of moeite hebben met digitale informatie, met een conversational interface en zichtbare bronnen. De opdracht noemt geen leeftijd. Onze doelgroep: laaggeletterde 18–24-jarigen, oftewel jongvolwassenen die moeite hebben met geschreven nieuws (onderbouwing in ons doelgroeponderzoek, `Doelgroeponderzoek_virtual_newsfluencer.docx`). Beoordeling loopt via portfolio, dus keuzes moeten uit te leggen zijn — bij een wijziging in de architectuur of het design de reden hier of in de README bijschrijven.
 
-Fase nu (27 okt 2026): testprototype op `design-preview`. Vaste testselectie van drie NOS-berichten, uitleg per knop door Gemini, presentatie via D-ID (Talks-agent `v2_agt_pxhNLRTB` met eigen foto, stem Maarten, DirectPlayback). Standaard in de ontwikkelmodus zonder D-ID. De echte D-ID-stream is nog niet getest: het account had 0 credits. De vorige versie (LiveAvatar + browserstem) staat onder de tag `voor-did-prototype`.
+Fase nu (30 okt 2026): testprototype op `main`. Live NOS-nieuws (of de vaste testselectie), uitleg per knop door Qwen via Groq (Mistral en Gemini als reserve), presentatie via Anam (avatar van de foto, stem Peter, geen taalmodel van Anam), vragen typen of inspreken. Standaard in de ontwikkelmodus zonder Anam. D-ID is verwijderd (laatste versie met D-ID: commit `6bcb8b7`); de versie daarvoor (LiveAvatar + browserstem) staat onder de tag `voor-did-prototype`.
 
 ## Harde regels
 
 - Nova gebruikt voor nieuwsfeiten uitsluitend de tekst van de geladen artikelen. Geen websearch, geen tools, geen eigen kennis over actualiteit. Uitleg mag, maar als uitleg aangekondigd.
 - Elk antwoord hoort bij precies één bericht. Dat bepaalt de server (`articleId` uit de aanvraag), niet het model. Bron, datum en link komen uit de servergegevens, nooit uit Gemini.
-- Systeemprompt (`lib/prompt.ts`), `GEMINI_API_KEY` en `DID_API_KEY` blijven server-side. De browser krijgt van D-ID alleen de agent-id en de client key (de beperkte sleutel die D-ID voor de browser bedoelt), en pas na Start. Nooit een `NEXT_PUBLIC_`-variabele voor een sleutel.
+- Systeemprompt (`lib/prompt.ts`) en alle sleutels (`GROQ_API_KEY`, `GEMINI_API_KEY`, `ANAM_API_KEY`) blijven server-side. De browser krijgt van Anam alleen een kortlevend sessietoken, en pas na Start. Nooit een `NEXT_PUBLIC_`-variabele voor een sleutel.
 - Bronnen blijven zichtbaar: bron en datum bij de titel, "Bekijk bron" opent het origineel. Geen verzonnen gegevens en geen demo-artikelen als echt nieuws.
 - Inhoud van `lib/prompt.ts` veranderd? Dan `PROMPT_VERSION` verhogen. Het testlog moet kunnen zeggen op welke prompt en welke artikelversie een antwoord was gebaseerd.
 - Geen gespreksinhoud bewaren: het testlog bevat alleen metadata.
-- Geen betaalde D-ID-stream in automatische tests. De ontwikkelmodus (`AVATAR_MODE=simulated`) roept D-ID niet aan.
+- Geen betaalde Anam-sessie in automatische tests. De ontwikkelmodus (`AVATAR_MODE=simulated`) roept Anam niet aan.
 - Staat een antwoord niet in de artikelen, dan zegt Nova dat expliciet. Dat gedrag niet wegpoetsen om antwoorden vloeiender te maken.
 - De app praat alleen met `generateExplanation()` in `lib/ai.ts`, nooit direct met Gemini. Alleen `lib/gemini.ts` kent de provider.
 - AI-logica en avatar blijven los van elkaar. De presentator (`components/presenter/`) krijgt alleen zinnen om uit te spreken, en weet niets van berichten of het model.
@@ -63,13 +63,13 @@ Gewijzigd op 27 okt 2026: testprototype met D-ID. Waarom: de opdracht vraagt een
 - De app opent op het eerste bericht van een vaste testselectie (`NEWS_MODE=test`, `data/test-articles.json`). Na Start vertelt Nova de kern en stopt. Daarna kiest de gebruiker zelf; Nova stelt niet na elk antwoord een vraag. De oude opening met drie koppen en "Ander nieuws" is vervallen. De NOS-feed blijft beschikbaar als `NEWS_MODE=live`.
 - `/api/anchor` (vrije chat, Gemini kiest het artikel) is vervangen door `/api/explain`: één bericht, één knop (`core`, `simpler`, `meaning`, `more`, `question`). Zo kan een antwoord nooit bij een andere bron belanden.
 - Nieuwe systeemprompt in `lib/prompt.ts`, op basis van de factsheet Eenvoudige taal en de NVJ-code. Na tests aangescherpt: geen "de NOS meldt" bij onze eigen hulpnotities, oordelen alleen toegeschreven, "mogelijk" niet weglaten.
-- D-ID vervangt LiveAvatar en de browserstem: een Clips-agent in `ChatMode.DirectPlayback` (alleen `speak()`, geen LLM van D-ID). Ontwikkelmodus is de standaard. Details en beperkingen staan in de README, onder "D-ID: wat de integratie wel en niet kan".
-- D-ID-calls: gratis calls (tegoed, agent aanmaken, lijsten) mag Claude zelf doen via `scripts/did-setup.mjs`. Een betaalde stream start alleen de gebruiker zelf.
+- D-ID vervangt LiveAvatar en de browserstem: een Clips-agent in `ChatMode.DirectPlayback` (alleen `speak()`, geen LLM van D-ID). Ontwikkelmodus is de standaard. Op 30 okt 2026 vervangen door Anam (sneller, echte pauze, ondertiteling die meeloopt); zie de README, onder "Anam: wat de integratie wel en niet kan".
+- Anam: lezen (avatars, stemmen) en een avatar maken mag Claude zelf; een sessie (kost minuten) start alleen de gebruiker zelf.
 
 ## Codeconventies
 
 - Lean. Geen abstracties die nog niks abstraheren, geen defensieve wrappers, geen helperlaag voor iets dat één keer voorkomt.
-- State staat in `app/page.tsx`. Pas opsplitsen in componenten als dat bestand echt onleesbaar wordt, niet uit principe. Uitzonderingen: `components/presenter/` (gesimuleerde en D-ID-presentator achter één interface, met tests) en `components/Panel.tsx` (panelen, één gedrag voor focus en Escape).
+- State staat in `app/page.tsx`. Pas opsplitsen in componenten als dat bestand echt onleesbaar wordt, niet uit principe. Uitzonderingen: `components/presenter/` (gesimuleerde en Anam-presentator achter één interface, met tests) en `components/Panel.tsx` (panelen, één gedrag voor focus en Escape).
 - Tests: `npm test` (node --test, TypeScript zonder build). Bestanden die getest worden importeren elkaar met een `.ts`-extensie en gebruiken geen `@/`-alias.
 - Directe property access boven ketens van null-checks; alleen guarden waar iets echt kan ontbreken.
 - CSS in `app/globals.css` met de tokens uit `:root`. Geen extra kleuren of radii introduceren zonder dat er een reden voor is.
@@ -90,7 +90,7 @@ Let op (27 okt 2026): de layout van het testprototype wordt apart herzien (Codex
 
 1. Streaming response, zodat het antwoord meteen begint te lopen.
 2. Meer feeds (bijv. NOS Sport of Tech) en tekst verder opschonen voordat die in de prompt gaat.
-3. Eerste echte D-ID-test (kort, door de gebruiker zelf): tegoed kopen, `AVATAR_MODE=did`, één bericht met Start, Pauze, Verder en Nog een keer. Daarbij vastleggen: fluent of legacy (ontwikkelpaneel), stemkwaliteit van Fenna, of herhalen uit het geheugen werkt, en het verbruik volgens D-ID tegenover onze telling.
+3. Live Anam-test met spraak: Start, een vraag inspreken, Pauze en Verder, op desktop én mobiel. Vastleggen: wordt de vraag goed verstaan, en werkt het op iOS Safari.
 4. Vergelijkende gebruikerstest (uit het doelgroeponderzoek). Deelnemers: mensen met leesproblemen uit een jongere, middelbare en oudere leeftijdsgroep, met 25–44 als belangrijkste vergelijking.
    - Dezelfde nieuwsonderwerpen, en uitleg door de avatar vergelijken met dezelfde gesproken uitleg zonder avatar.
    - Meten: begrip (deelnemers vertellen de kern na, naar het Pharos-principe), hoeveel hulp nodig is, en of ze het opnieuw willen gebruiken.
@@ -98,6 +98,6 @@ Let op (27 okt 2026): de layout van het testprototype wordt apart herzien (Codex
 
 ## Niet doen
 
-- Geen extra dependencies zonder reden; nu alleen next, react, react-dom en `@d-id/client-sdk` (vast op 3.0.6, alleen dynamisch geladen in `components/presenter/did.ts`). Kwetsbaarheden oplossen met de kleinste veilige stap: `postcss` staat in `overrides` op ^8.5.28 omdat Next 15.5.25 8.4.31 pint. Niet blind `npm audit fix --force`, dat trekt Next naar een nieuwe major.
-- Geen betaalde API-calls uitvoeren namens mij (D-ID-streams). Gratis calls mogen; voor de rest: geef het commando of de payload, ik run het en plak het resultaat terug.
+- Geen extra dependencies zonder reden; nu alleen next, react, react-dom en `@anam-ai/js-sdk` (vast op 4.29.1, alleen dynamisch geladen in `components/presenter/anam.ts`). Kwetsbaarheden oplossen met de kleinste veilige stap: `postcss` staat in `overrides` op ^8.5.28 omdat Next 15.5.25 8.4.31 pint. Niet blind `npm audit fix --force`, dat trekt Next naar een nieuwe major.
+- Geen betaalde API-calls uitvoeren namens mij (Anam-sessies). Gratis calls mogen; voor de rest: geef het commando of de payload, ik run het en plak het resultaat terug.
 - Geen echte bronnamen aan de verzonnen demo-artikelen hangen. Echte bronnaam (NOS) alleen bij berichten die echt uit de feed komen.

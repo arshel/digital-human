@@ -10,8 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anam-ai/js-sdk": "^4.29.1",
-    "@d-id/client-sdk": "3.0.6",
+    "@anam-ai/js-sdk": "4.29.1",
     "next": "^15.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

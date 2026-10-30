@@ -10,8 +10,10 @@ import type { TimingEvent } from '../components/presenter/types.ts';
 type Listener = (...args: unknown[]) => void;
 type Chunk = { correlationId: string; text: string; end: boolean };
 
-function setup({ sessionStatus = 200 } = {}) {
-  const calls = { session: 0, create: 0, stream: 0, chunks: [] as Chunk[], interrupt: 0, stop: 0, options: [] as unknown[] };
+function setup({ sessionStatus = 200, micDenied = false } = {}) {
+  const calls = { session: 0, create: 0, stream: 0, chunks: [] as Chunk[], interrupt: 0, stop: 0, options: [] as unknown[], mic: 0, micStopped: 0, attach: 0, detach: 0, audioIn: [] as unknown[] };
+  const listening: string[] = [];
+  const heard: string[] = [];
   const states: string[] = [];
   const sentences: number[] = [];
   const timings: TimingEvent[] = [];
@@ -34,8 +36,9 @@ function setup({ sessionStatus = 200 } = {}) {
             addListener(event: string, cb: Listener) {
               this.listeners[event] = cb;
             },
-            async streamToVideoElement() {
+            async streamToVideoElement(_id: string, audio?: unknown) {
               calls.stream++;
+              calls.audioIn.push(audio);
               await new Promise((r) => setTimeout(r, 5));
               if (hold) await hold;
               this.listeners.VIDEO_PLAY_STARTED?.(); // eerste beeld
@@ -58,10 +61,17 @@ function setup({ sessionStatus = 200 } = {}) {
       }) as never,
     now: () => 0,
     debug: () => {},
+    // Stille geluidsstroom naar Anam; de microfoon wordt er alleen tijdens luisteren op aangesloten.
+    audio: () => ({ stream: { id: 'stil' } as unknown as MediaStream, attach: () => void calls.attach++, detach: () => void calls.detach++, close: () => {} }),
+    microphone: async () => {
+      calls.mic++;
+      if (micDenied) throw Object.assign(new Error('geweigerd'), { name: 'NotAllowedError' });
+      return { getTracks: () => [{ stop: () => void calls.micStopped++ }] } as unknown as MediaStream;
+    },
   };
 
   const video = { id: '' };
-  const presenter = new AnamPresenter(video as unknown as HTMLVideoElement, { onState: (s) => states.push(s), onSentence: (i) => sentences.push(i), onTiming: (e) => timings.push(e) }, deps);
+  const presenter = new AnamPresenter(video as unknown as HTMLVideoElement, { onState: (s) => states.push(s), onSentence: (i) => sentences.push(i), onTiming: (e) => timings.push(e), onListening: (s) => listening.push(s), onHeard: (t) => heard.push(t) }, deps);
   // Anam vertelt wat de persona uitspreekt, met de correlationId van het fragment.
   const say = (content: string, extra: { endOfSpeech?: boolean; interrupted?: boolean; correlationId?: string; id?: string } = {}, client = clients.at(-1)) =>
     client?.listeners.MESSAGE_STREAM_EVENT_RECEIVED({
@@ -81,7 +91,10 @@ function setup({ sessionStatus = 200 } = {}) {
       release();
     };
   };
-  return { presenter, calls, states, sentences, timings, video, clients, say, holdConnect };
+  // Wat Anam van de gebruiker verstaat.
+  const hear = (content: string, endOfSpeech = false) =>
+    clients.at(-1)?.listeners.MESSAGE_STREAM_EVENT_RECEIVED({ id: 'user::1', role: 'user', content, endOfSpeech, interrupted: false });
+  return { presenter, calls, states, sentences, timings, video, clients, say, hear, holdConnect, listening, heard };
 }
 
 const LINES = ['Eerste zin hier.', 'Tweede zin hier.', 'Derde zin hier.'];
@@ -98,7 +111,9 @@ describe('AnamPresenter', () => {
     await t.presenter.connect();
     assert.equal(t.calls.session, 1);
     assert.equal(t.calls.create, 1);
-    assert.deepEqual(t.calls.options[0], { disableInputAudio: true });
+    assert.deepEqual(t.calls.options[0], { disableInputAudio: false });
+    assert.equal((t.calls.audioIn[0] as { id: string }).id, 'stil', 'eigen, stille geluidsstroom: de SDK vraagt zelf geen microfoon');
+    assert.equal(t.calls.mic, 0, 'geen microfoon bij het verbinden');
     assert.equal(t.video.id, 'nova-video', 'het video-element krijgt een id voor de SDK');
   });
 
@@ -251,5 +266,58 @@ describe('AnamPresenter', () => {
     assert.equal(t.states.at(-1), 'speaking');
     t.say('Oud', { correlationId: 'external::iets-anders::1', id: 'persona::external::y::1' });
     assert.equal(t.sentences.at(-1), 0, 'een ander fragment telt niet');
+  });
+
+  // ---------- luisteren ----------
+
+  it('luisteren: microfoon pas na de knop, en uit zodra de vraag af is', async () => {
+    await t.presenter.connect();
+    await t.presenter.listen();
+    assert.equal(t.calls.mic, 1);
+    assert.equal(t.calls.attach, 1);
+    assert.deepEqual(t.listening, ['on']);
+    t.hear('Wat betekent');
+    t.hear(' inflatie?', true); // Anam: einde van de vraag
+    assert.deepEqual(t.heard, ['Wat betekent inflatie?']);
+    assert.deepEqual(t.listening, ['on', 'off']);
+    assert.equal(t.calls.detach, 1);
+    assert.equal(t.calls.micStopped, 1, 'microfoon helemaal uit, ook het lampje');
+  });
+
+  it('luisteren: wat Anam verstaat terwijl we niet luisteren, telt niet', async () => {
+    await t.presenter.connect();
+    t.hear('Hallo', true);
+    assert.deepEqual(t.heard, []);
+  });
+
+  it('luisteren: Nova houdt op met praten als je wilt praten', async () => {
+    await t.presenter.speak(LINES);
+    t.say('Eerste zin');
+    await t.presenter.listen();
+    assert.equal(t.calls.interrupt, 1);
+    assert.equal(t.states.at(-1), 'ready');
+  });
+
+  it('luisteren: nog een keer tikken stuurt wat er al verstaan is', async () => {
+    await t.presenter.listen();
+    t.hear('Wat is een kabinet');
+    t.presenter.stopListening();
+    assert.deepEqual(t.heard, ['Wat is een kabinet']);
+    assert.equal(t.calls.micStopped, 1);
+  });
+
+  it('luisteren: geweigerde microfoon wordt in gewone taal gemeld', async () => {
+    t = setup({ micDenied: true });
+    await t.presenter.listen();
+    assert.deepEqual(t.listening, ['denied']);
+    assert.equal(t.calls.attach, 0);
+  });
+
+  it('afsluiten tijdens luisteren: microfoon uit, niets doorgestuurd', async () => {
+    await t.presenter.listen();
+    t.hear('Half');
+    await t.presenter.disconnect('hidden');
+    assert.deepEqual(t.heard, []);
+    assert.equal(t.calls.micStopped, 1);
   });
 });

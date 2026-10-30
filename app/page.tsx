@@ -12,7 +12,7 @@ import { Panel } from "@/components/Panel";
 import { PresenterBackdrop } from "@/components/PresenterBackdrop";
 import { usePresenter } from "@/components/presenter/usePresenter";
 import { CycleTiming, type TimingReport } from "@/components/presenter/timing";
-import type { TimingEvent } from "@/components/presenter/types";
+import type { ListenState, TimingEvent } from "@/components/presenter/types";
 import {
   AgainIcon,
   AskIcon,
@@ -24,6 +24,7 @@ import {
   PauseIcon,
   PlayIcon,
   SendIcon,
+  MicIcon,
   SimplerIcon,
   AccessibilityIcon,
   TextSizeIcon,
@@ -33,12 +34,12 @@ import { splitSentences } from "@/lib/spoken";
 import type { ArticleMeta } from "@/lib/articles";
 import type { Action, Previous } from "@/lib/prompt";
 
-// Alle state van het prototype staat hier. De presentator (gesimuleerd of D-ID) zit achter
+// Alle state van het prototype staat hier. De presentator (gesimuleerd of Anam) zit achter
 // usePresenter; deze pagina weet alleen wat die doet, niet hoe.
 
 type Config = {
   newsMode: "test" | "live";
-  avatarMode: "simulated" | "did" | "anam";
+  avatarMode: "simulated" | "anam";
   devTools: boolean;
   promptVersion: string;
   poster: string | null;
@@ -124,7 +125,7 @@ export default function Page() {
   // het nummer al verder is, hoort bij een oude vraag of een ander bericht en wordt genegeerd.
   const seq = useRef(0);
   const inflight = useRef<AbortController | null>(null);
-  // Met D-ID: het nieuwe antwoord, tot Nova het begint uit te spreken. Zo verschijnen tekst en
+  // Met een echte avatar: het nieuwe antwoord, tot Nova het begint uit te spreken. Zo verschijnen tekst en
   // stem tegelijk, in plaats van eerst de tekst en seconden later pas de stem.
   const waiting = useRef<Fragment | null>(null);
   // Metingen per klik voor de ontwikkelserver (alleen getallen; zie app/api/timing).
@@ -147,9 +148,16 @@ export default function Page() {
     },
     [sendTiming],
   );
-  const presenter = usePresenter(config?.avatarMode ?? null, preparing !== null, onTiming);
-  // Een echte avatar (D-ID of Anam): video in beeld, tekst pas als Nova praat, metingen.
-  const realAvatar = config?.avatarMode === "did" || config?.avatarMode === "anam";
+  // Een gesproken vraag gaat dezelfde weg als een getypte (zie ask()).
+  const askRef = useRef<(question: string) => void>(() => {});
+  const [heard, setHeard] = useState("");
+  const onHeard = useCallback((text: string) => {
+    setHeard(text);
+    askRef.current(text);
+  }, []);
+  const presenter = usePresenter(config?.avatarMode ?? null, preparing !== null, onTiming, onHeard);
+  // Een echte avatar (Anam): video in beeld, tekst pas als Nova praat, metingen.
+  const realAvatar = config?.avatarMode === "anam";
 
   const articles = config?.articles ?? [];
   const article = articles[index] ?? null;
@@ -338,15 +346,29 @@ export default function Page() {
     presenter.replay();
   }
 
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    const question = draft.trim();
+  function ask(question: string) {
     if (!question || preparing || inflight.current || !article) return;
     // A question can also start the conversation, without an opening summary.
     if (!started) setStarted(true);
     setPanel(null);
     setDraft("");
     explain(article, "question", question, started ? history : []);
+  }
+  askRef.current = ask;
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    setHeard("");
+    ask(draft.trim());
+  }
+
+  // Microfoon aan tot de vraag af is (Anam meldt het einde), of tot je nog een keer tikt.
+  function toggleListen() {
+    if (presenter.listening === "on") return presenter.stopListening();
+    if (preparing || !article) return;
+    setHeard("");
+    setPanel(null);
+    presenter.listen();
   }
 
   const close = useCallback(() => setPanel(null), []);
@@ -398,14 +420,12 @@ export default function Page() {
   const timingLabel =
     presenter.timing === "sentence"
       ? "Ondertiteling"
-      : presenter.timing === "estimated"
-        ? "Ondertiteling (geschatte timing)"
-        : presenter.timing === "simulated"
+      : presenter.timing === "simulated"
           ? "Ondertiteling (gesimuleerd tempo)"
           : "Meeleestekst";
 
-  // D-ID has no exact sentence events. Its complete reading text stays available below
-  // the image; only presenters with sentence timing get changing overlay captions.
+  // Zonder timing per zin blijft de hele tekst als meeleestekst onder het beeld staan; alleen
+  // presentatoren met timing per zin krijgen wisselende ondertiteling in beeld.
   const timedCaptions = presenter.timing !== "none";
   const activeSentence =
     fragment?.sentences[presenter.sentence >= 0 ? presenter.sentence : 0];
@@ -615,7 +635,17 @@ export default function Page() {
               <span>{draft || "Wat wil je weten?"}</span>
               <SendIcon />
             </button>
-            <p className="question-privacy">Typ geen persoonlijke gegevens.</p>
+            {presenter.canListen && (
+              <MicButton
+                listening={presenter.listening}
+                disabled={!!preparing || !article}
+                onClick={toggleListen}
+              />
+            )}
+            {heard && <p className="question-privacy">Je vroeg: “{heard}”</p>}
+            <p className="question-privacy">
+              Zeg of typ geen persoonlijke gegevens.
+            </p>
           </section>
           <div className="reading-card">
             {fragment ? (
@@ -886,9 +916,16 @@ export default function Page() {
             onChange={(e) => setDraft(e.target.value)}
           />
           <p>Je vraag gaat over: {article?.shortTitle}</p>
+          {presenter.canListen && (
+            <MicButton
+              listening={presenter.listening}
+              disabled={!!preparing || !article}
+              onClick={toggleListen}
+            />
+          )}
           <p>
-            Typ geen persoonlijke gegevens. Je vraag gaat naar de AI van Google
-            (Gemini) en wordt niet bewaard.
+            Typ geen persoonlijke gegevens. Je vraag gaat naar een AI-taalmodel
+            (via Groq) en wordt niet bewaard.
           </p>
           <button
             type="submit"
@@ -938,8 +975,12 @@ export default function Page() {
             <p>
               <strong>Nova is een AI-presentator. Nova is geen mens.</strong>
             </p>
-            <p>De tekst maakt een computer met AI (Gemini van Google).</p>
-            <p>Het beeld en de stem maakt D-ID, ook met AI.</p>
+            <p>De tekst maakt een computer met AI (Qwen, via Groq).</p>
+            <p>Het beeld en de stem maakt Anam, ook met AI.</p>
+            <p>
+              Stel je een vraag met je stem, dan maakt Anam daar tekst van. Je
+              stem wordt niet door ons bewaard.
+            </p>
           </section>
           <section>
             <h3>Waar komt het nieuws vandaan?</h3>
@@ -1014,27 +1055,15 @@ function DevPanel({
   onSimulate: (s: Simulate) => void;
   onDrop: () => void;
 }) {
-  const [usage, setUsage] = useState<Record<string, unknown> | null>(null);
-  const loadUsage = () =>
-    fetch("/api/did/usage")
-      .then((r) => r.json())
-      .then(setUsage)
-      .catch(() => setUsage({ error: "niet geladen" }));
-  const seconds = (n: unknown) => `${Math.round(Number(n) || 0)} s`;
-  const credits = usage?.credits as
-    { remaining: number; total: number } | null | undefined;
-
   return (
     <details className="dev">
       <summary>Voor ontwikkelaars</summary>
       <dl>
         <dt>Avatar</dt>
         <dd>
-          {config.avatarMode === "did"
-            ? "D-ID (echte stream, kost tegoed)"
-            : config.avatarMode === "anam"
-              ? "Anam (proef, kost Anam-minuten)"
-              : "gesimuleerd (geen D-ID)"}
+          {config.avatarMode === "anam"
+            ? "Anam (echte stream, kost Anam-minuten)"
+            : "gesimuleerd (geen Anam)"}
         </dd>
         <dt>Nieuws</dt>
         <dd>
@@ -1052,7 +1081,7 @@ function DevPanel({
             <dd>{fragment.articleVersion}</dd>
             <dt>Antwoord</dt>
             <dd>
-              {fragment.mode === "ai" ? "Gemini" : "terugval (regels)"} ·{" "}
+              {fragment.mode === "ai" ? "AI-taalmodel" : "terugval (regels)"} ·{" "}
               {fragment.requestId.slice(0, 8)}
             </dd>
           </>
@@ -1078,28 +1107,45 @@ function DevPanel({
         <button type="button" className="btn" onClick={onDrop}>
           Verbinding verbreken
         </button>
-        {config.avatarMode === "did" && (
-          <button type="button" className="btn" onClick={loadUsage}>
-            Verbruik ophalen
-          </button>
-        )}
       </div>
-      {usage && (
-        <dl>
-          <dt>Gesproken video (gemeld door D-ID)</dt>
-          <dd>{seconds(usage.spoken)}</dd>
-          <dt>Verbinding open (eigen klok, schatting)</dt>
-          <dd>{seconds(usage.connected)}</dd>
-          <dt>Begrenzing</dt>
-          <dd>
-            {seconds(usage.counted)} van {seconds(usage.budget)}
-          </dd>
-          <dt>Tegoed volgens D-ID</dt>
-          <dd>
-            {credits ? `${credits.remaining} van ${credits.total}` : "onbekend"}
-          </dd>
-        </dl>
-      )}
     </details>
+  );
+}
+
+// Spreek je vraag in (alleen met Anam). De microfoon staat alleen aan zolang deze knop "luistert".
+function MicButton({
+  listening,
+  disabled,
+  onClick,
+}: {
+  listening: ListenState;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const on = listening === "on";
+  return (
+    <>
+      <button
+        type="button"
+        className={`btn${on ? " btn-primary" : ""}`}
+        aria-pressed={on}
+        disabled={disabled && !on}
+        onClick={onClick}
+      >
+        <MicIcon />
+        {on ? "Ik luister… tik als je klaar bent" : "Spreek je vraag in"}
+      </button>
+      {listening === "denied" && (
+        <p className="question-privacy" role="alert">
+          Nova mag de microfoon niet gebruiken. Zet het aan in je browser, of
+          typ je vraag.
+        </p>
+      )}
+      {listening === "failed" && (
+        <p className="question-privacy" role="alert">
+          De microfoon werkt nu niet. Typ je vraag.
+        </p>
+      )}
+    </>
   );
 }

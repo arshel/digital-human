@@ -1,5 +1,5 @@
 import type { AnamClient, MessageStreamEvent } from '@anam-ai/js-sdk';
-import type { PauseKind, Presenter, PresenterEvents, Timing, TimingStep } from './types.ts';
+import type { Presenter, PresenterEvents, Timing, TimingStep } from './types.ts';
 
 // Proef: dezelfde Nova op Anam (@anam-ai/js-sdk 4.29). Nagelezen in de typen van de SDK en
 // anam.ai/docs, oktober 2026:
@@ -15,7 +15,11 @@ import type { PauseKind, Presenter, PresenterEvents, Timing, TimingStep } from '
 // - Begin en einde van het spreken: het eerste transcriptstuk van het fragment, en endOfSpeech of
 //   interrupted. De zin in beeld volgt hoeveel van de tekst Anam al heeft uitgesproken.
 // - interruptPersona() stopt meteen. Pauze is dus echt; verder spreekt de rest opnieuw uit.
-// - Geen microfoon (disableInputAudio): de gebruiker praat niet met Nova.
+// - Luisteren: de SDK krijgt een eigen, stille geluidsstroom (streamToVideoElement(id, stroom)) en
+//   vraagt dan zelf nooit om de microfoon. Pas als de gebruiker op de microfoonknop drukt, vragen
+//   wij toestemming en sluiten we de microfoon op die stroom aan, tot Anam het einde van de vraag
+//   meldt (transcript met rol 'user' en endOfSpeech). Daarna gaat de microfoon weer helemaal uit.
+//   Anam maakt van de stem tekst (spraakherkenning, Nederlands); het antwoord maakt onze server.
 
 type Sdk = typeof import('@anam-ai/js-sdk');
 
@@ -25,7 +29,35 @@ export type AnamDeps = {
   now: () => number;
   // Tijdelijk, alleen ontwikkelserver: de vorm van elk transcriptevent (geen tekst) naar de serverlog.
   debug?: (info: Record<string, unknown>) => void;
+  audio: () => OutgoingAudio;
+  microphone: () => Promise<MediaStream>;
 };
+
+// Het geluid dat naar Anam gaat: stil, behalve als de microfoon is aangesloten.
+export type OutgoingAudio = { stream: MediaStream; attach: (mic: MediaStream) => void; detach: () => void; close: () => void };
+
+function outgoingAudio(): OutgoingAudio {
+  const context = new AudioContext();
+  context.resume().catch(() => {});
+  const destination = context.createMediaStreamDestination();
+  let source: MediaStreamAudioSourceNode | null = null;
+  return {
+    stream: destination.stream,
+    attach(mic) {
+      source?.disconnect();
+      source = context.createMediaStreamSource(mic);
+      source.connect(destination);
+    },
+    detach() {
+      source?.disconnect();
+      source = null;
+    },
+    close() {
+      source?.disconnect();
+      context.close().catch(() => {});
+    },
+  };
+}
 
 const defaultDeps = (): AnamDeps => ({
   loadSdk: () => import('@anam-ai/js-sdk'),
@@ -34,13 +66,18 @@ const defaultDeps = (): AnamDeps => ({
   debug: (info) => {
     fetch('/api/anam/debug', { method: 'POST', body: JSON.stringify(info), keepalive: true }).catch(() => {});
   },
+  audio: outgoingAudio,
+  microphone: () => navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }),
 });
+
+// Zo lang mag één vraag duren; daarna gaat de microfoon uit met wat er tot dan is verstaan.
+const LISTEN_MAX_MS = 20000;
 
 const VIDEO_ID = 'nova-video';
 const FIRST_FRAME_MS = 5000;
 
 export class AnamPresenter implements Presenter {
-  readonly pauseKind: PauseKind = 'stop';
+  readonly canListen = true;
   private video: HTMLVideoElement;
   private events: PresenterEvents;
   private deps: AnamDeps;
@@ -62,6 +99,11 @@ export class AnamPresenter implements Presenter {
   private spoken = ''; // wat Anam van dit fragment al heeft uitgesproken
   private sentence = -1;
   private cycle: number | undefined;
+  private outgoing: OutgoingAudio | null = null;
+  private mic: MediaStream | null = null;
+  private listening = false;
+  private heard = ''; // de vraag zoals Anam die tot nu toe verstond
+  private listenTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(video: HTMLVideoElement, events: PresenterEvents, deps: AnamDeps = defaultDeps()) {
     this.video = video;
@@ -73,13 +115,16 @@ export class AnamPresenter implements Presenter {
     return this.paused;
   }
 
-  // De zin volgt het transcript van Anam. Hoe goed dat met de stem samenvalt, moet de proef laten zien.
+  // De zin volgt het transcript van Anam: wat er werkelijk is uitgesproken. In de live proef liep
+  // dat goed gelijk met de stem.
   get timing(): Timing {
-    return 'estimated';
+    return 'sentence';
   }
 
   connect(): Promise<boolean> {
     if (this.client) return Promise.resolve(true);
+    // Tijdens de klik: een AudioContext die later wordt gemaakt, blijft op iOS stil.
+    this.outgoing ??= this.deps.audio();
     if (!this.connecting) {
       const attempt: Promise<boolean> = this.open().finally(() => {
         if (this.connecting === attempt) this.connecting = null;
@@ -103,7 +148,7 @@ export class AnamPresenter implements Presenter {
 
       const sdk = await this.deps.loadSdk();
       if (!current()) return false;
-      client = sdk.createClient(data.sessionToken, { disableInputAudio: true });
+      client = sdk.createClient(data.sessionToken, { disableInputAudio: false });
       client.addListener(sdk.AnamEvent.MESSAGE_STREAM_EVENT_RECEIVED, (e: MessageStreamEvent) => {
         if (current()) this.transcript(e);
       });
@@ -115,7 +160,8 @@ export class AnamPresenter implements Presenter {
       client.addListener(sdk.AnamEvent.VIDEO_PLAY_STARTED, () => firstFrame());
       this.building = client;
       this.video.id ||= VIDEO_ID;
-      await client.streamToVideoElement(this.video.id);
+      this.outgoing ??= this.deps.audio();
+      await client.streamToVideoElement(this.video.id, this.outgoing.stream);
       // Wachten op het eerste echte beeld, maar nooit eindeloos.
       await Promise.race([playing, new Promise((resolve) => setTimeout(resolve, FIRST_FRAME_MS))]);
       if (this.building === client) this.building = null;
@@ -178,6 +224,7 @@ export class AnamPresenter implements Presenter {
   // Wat Anam uitspreekt, stukje voor stukje. Alleen van het fragment dat nu mag klinken.
   private transcript(e: MessageStreamEvent) {
     this.deps.debug?.({ role: e.role, id: e.id, cid: e.correlationId ?? null, mine: this.fragment, end: e.endOfSpeech, int: e.interrupted, len: e.content.length });
+    if (e.role === 'user') return this.userSpeech(e);
     if (e.role !== 'persona' || !this.fragment || this.stale.has(e.id)) return;
     if (e.correlationId !== undefined) {
       if (!e.correlationId.split('::').includes(this.fragment)) return;
@@ -191,6 +238,62 @@ export class AnamPresenter implements Presenter {
     this.spoken = this.spoken && e.content.startsWith(this.spoken) ? e.content : this.spoken + e.content;
     this.follow();
     if (e.endOfSpeech || e.interrupted) this.talkStop();
+  }
+
+  // ---------- luisteren ----------
+
+  async listen() {
+    if (this.listening) return;
+    // Nova houdt op met praten als jij wilt praten.
+    this.stop();
+    const connecting = this.connect();
+    let mic: MediaStream;
+    try {
+      mic = await this.deps.microphone();
+    } catch (err) {
+      const denied = err instanceof Error && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+      console.error('[anam] microfoon:', err);
+      this.events.onListening?.(denied ? 'denied' : 'failed');
+      return;
+    }
+    const ready = await connecting.catch(() => false);
+    if (!ready || !this.outgoing) {
+      mic.getTracks().forEach((t) => t.stop());
+      this.events.onListening?.('failed');
+      return;
+    }
+    this.mic = mic;
+    this.outgoing.attach(mic);
+    this.listening = true;
+    this.heard = '';
+    this.listenTimer = setTimeout(() => this.finishListening(true), LISTEN_MAX_MS);
+    this.events.onListening?.('on');
+  }
+
+  stopListening() {
+    this.finishListening(true);
+  }
+
+  // Microfoon helemaal uit (ook het lampje in de browser). Met `send`: wat verstaan is, gaat door.
+  private finishListening(send: boolean) {
+    if (!this.listening) return;
+    this.listening = false;
+    if (this.listenTimer) clearTimeout(this.listenTimer);
+    this.listenTimer = null;
+    this.outgoing?.detach();
+    this.mic?.getTracks().forEach((t) => t.stop());
+    this.mic = null;
+    this.events.onListening?.('off');
+    const text = this.heard.replace(/\s+/g, ' ').trim();
+    this.heard = '';
+    if (send && text) this.events.onHeard?.(text);
+  }
+
+  // Wat Anam van de gebruiker verstaat. Alleen terwijl wij luisteren.
+  private userSpeech(e: MessageStreamEvent) {
+    if (!this.listening) return;
+    this.heard = this.heard && e.content.startsWith(this.heard) ? e.content : this.heard + e.content;
+    if (e.endOfSpeech) this.finishListening(true);
   }
 
   private talkStart() {
@@ -283,11 +386,15 @@ export class AnamPresenter implements Presenter {
     building?.stopStreaming().catch(() => {});
     const client = this.client;
     this.client = null;
+    this.finishListening(false);
     this.stopTalking();
     this.paused = false;
     if (!client && !wasConnecting) return;
     this.mark('closed', { detail: reason || 'leave' });
     await client?.stopStreaming().catch(() => {});
+    // Volgende verbinding: een nieuwe stroom, tijdens de volgende klik gemaakt.
+    this.outgoing?.close();
+    this.outgoing = null;
     this.events.onState(reason ? 'disconnected' : 'idle', reason);
   }
 
@@ -299,6 +406,7 @@ export class AnamPresenter implements Presenter {
       this.paused = true;
     }
     this.client = null;
+    this.finishListening(false);
     this.talking = false;
     this.requested = false;
     this.fragment = null;

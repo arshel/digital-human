@@ -8,7 +8,7 @@ import path from 'node:path';
 
 const DIR = path.join(process.cwd(), 'logs');
 
-export async function logLine(file: 'answers' | 'did-usage', entry: Record<string, unknown>) {
+export async function logLine(file: 'answers', entry: Record<string, unknown>) {
   if (process.env.NOVA_TEST_LOG === '0') return;
   try {
     await mkdir(DIR, { recursive: true });
@@ -18,7 +18,7 @@ export async function logLine(file: 'answers' | 'did-usage', entry: Record<strin
   }
 }
 
-export async function readLines(file: 'answers' | 'did-usage') {
+export async function readLines(file: 'answers') {
   try {
     const text = await readFile(path.join(DIR, `${file}.jsonl`), 'utf8');
     return text

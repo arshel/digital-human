@@ -1,6 +1,6 @@
-import type { PauseKind, Presenter, PresenterEvents, Timing } from './types.ts';
+import type { Presenter, PresenterEvents, Timing } from './types.ts';
 
-// De presentator in de ontwikkelmodus. D-ID wordt niet aangeroepen. Heeft de browser een
+// De presentator in de ontwikkelmodus. Anam wordt niet aangeroepen. Heeft de browser een
 // Nederlandse stem, dan leest die voor (Web Speech API, per zin een uiting, dus echte events per
 // zin). Zonder stem loopt een timer per zin, zodat alle statussen te testen zijn; dat tempo is
 // gesimuleerd. Verbinding maken en verbroken verbinding zijn nagespeeld (simulateDrop).
@@ -37,7 +37,6 @@ function browserSynth() {
 }
 
 export class SimulatedPresenter implements Presenter {
-  readonly pauseKind: PauseKind = 'stop';
   private events: PresenterEvents;
   private synth: SpeechSynthesis | null;
   private voice: SpeechSynthesisVoice | null = null;

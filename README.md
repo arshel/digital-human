@@ -2,33 +2,32 @@
 
 Webprototype voor de minor Digital Humans: een AI-presentator die nieuws uitlegt aan laaggeletterde jongvolwassenen van 18 tot en met 24 jaar. Doel van het prototype: testen of deze groep nieuws beter begrijpt. Na de uitleg moet iemand kunnen vertellen wat er is gebeurd, wie erbij betrokken zijn, waarom het belangrijk is en wat nog onzeker is.
 
-De pagina opent direct op de presentator, met de titel van het eerste bericht, het label "AI-presentator" en één knop: **Start**. Pas daarna starten geluid, Gemini en (in de echte modus) de betaalde D-ID-stream. Nova vertelt kort de kern en stopt. Daarna kiest de gebruiker zelf: **Leg makkelijker uit**, **Wat betekent dit?**, **Vertel meer**, **Nog een keer**, **Stel een vraag** of **Volgend bericht**, plus **Pauze/Verder** en **Ondertiteling aan/uit**. Geen account.
+De pagina opent direct op de presentator, met de titel van het eerste bericht, het label "AI-presentator" en één knop: **Start**. Pas daarna starten geluid, het taalmodel en (in de echte modus) de Anam-stream. Nova vertelt kort de kern en stopt. Daarna kiest de gebruiker zelf: **Leg makkelijker uit**, **Wat betekent dit?**, **Vertel meer**, **Nog een keer**, **Stel een vraag** (typen of inspreken) of **Volgend bericht**, plus **Pauze/Verder** en **Ondertiteling aan/uit**. Geen account.
 
-Terug naar de versie van vóór dit prototype (LiveAvatar + browserstem): `git checkout voor-did-prototype`.
+Terug naar de versie van vóór dit prototype (LiveAvatar + browserstem): `git checkout voor-did-prototype`. De D-ID-versie staat in commit `6bcb8b7`.
 
 ## Starten
 
 ```bash
 npm install
-cp .env.example .env.local     # vul GEMINI_API_KEY in (en voor D-ID: zie hieronder)
+cp .env.example .env.local     # vul GROQ_API_KEY in (en voor Anam: zie hieronder)
 npm run dev                    # http://localhost:3000
 ```
 
-Standaard draait de **ontwikkelmodus** (`AVATAR_MODE=simulated`): D-ID wordt niet aangeroepen, de antwoordtekst staat in beeld, en een gele balk meldt dat de avatar gesimuleerd is. Heeft de browser een Nederlandse stem, dan leest die voor.
+Standaard draait de **ontwikkelmodus** (`AVATAR_MODE=simulated`): Anam wordt niet aangeroepen, de antwoordtekst staat in beeld, en een gele balk meldt dat de avatar gesimuleerd is. Heeft de browser een Nederlandse stem, dan leest die voor.
 
-### Echte D-ID-stream
+### Echte Anam-stream
 
-1. Zet `DID_API_KEY` in `.env.local`.
-2. Maak de agent aan (gratis, geen stream): `node --env-file=.env.local scripts/did-setup.mjs create`. Dit zet `DID_AGENT_ID`, `DID_CLIENT_KEY` en `DID_POSTER_URL` in `.env.local`. `... did-setup.mjs status` toont tegoed en agents.
-3. Controleer in D-ID Studio (Agents → Nova (prototype) → … → Embed) dat `http://localhost:3000` bij de toegestane domeinen staat. De client key werkt alleen vanaf die domeinen.
-4. Zet `AVATAR_MODE=did` en herstart `npm run dev`.
+1. Zet `ANAM_API_KEY` in `.env.local` (lab.anam.ai → API keys).
+2. Zet `ANAM_AVATAR_ID` (de avatar "Nova (foto)", gemaakt van de foto via `POST /v1/avatars`) en `ANAM_VOICE_ID` (de Nederlandse stem "Peter").
+3. Zet `AVATAR_MODE=anam` en herstart `npm run dev`.
 
-Terug naar de ontwikkelmodus: `AVATAR_MODE=simulated` (of de regel weghalen) en herstarten. Alle variabelen staan met uitleg in [.env.example](.env.example).
+Het beeld en de wachtvideo vóór Start staan in `public/anam/`: gewone bestanden van dezelfde avatar, zodat het beeld bij Start niet verspringt. Een andere avatar: vervang die twee bestanden (of zet `ANAM_POSTER_URL` en `ANAM_IDLE_VIDEO_URL`). Alle variabelen staan met uitleg in [.env.example](.env.example).
 
 ### Tests
 
 ```bash
-npm test          # 39 tests, met nagemaakte D-ID-SDK: geen betaalde stream
+npm test          # met nagemaakte Anam-SDK en microfoon: geen sessie, geen kosten
 npm run typecheck
 ```
 
@@ -39,30 +38,31 @@ data/test-articles.json        vaste testselectie: 3 NOS-berichten, brontekst + 
 lib/articles.ts                berichten per modus (test of live), artikelversie (hash)
 lib/news.ts                    NOS-feed voor NEWS_MODE=live (15 min cache, terugval op demo)
 lib/prompt.ts                  systeemprompt, PROMPT_VERSION, opdracht per knop
-lib/ai.ts                      generateExplanation(): Gemini, of de terugval
-lib/gemini.ts                  het enige bestand dat Gemini kent (REST, modellenlijst)
+lib/ai.ts                      generateExplanation(): Groq, Mistral of Gemini, of de terugval
+lib/groq.ts, lib/mistral.ts    taalmodellen via de chat-API in OpenAI-vorm (lib/openai-chat.ts)
+lib/gemini.ts                  Gemini (REST, modellenlijst), als reserve
+lib/corecache.ts               basisuitleg vooraf klaarzetten, met lage voorrang
 lib/fallback.ts                regelgebaseerde terugval: alleen zinnen uit de bron
 lib/spoken.ts                  gesproken tekst schoonmaken, zinnen splitsen
 lib/validate.ts                validatie van /api/explain
-lib/did.ts                     D-ID server-side: stem, begrenzing, tegoed, verbruik
-lib/testlog.ts                 logs/*.jsonl (metadata, geen gespreksinhoud)
-app/api/news                   berichten (zonder brontekst), modi, posterbeeld
+lib/testlog.ts                 logs/answers.jsonl (metadata, geen gespreksinhoud)
+app/api/news                   berichten (zonder brontekst), modi, beeld vóór Start
 app/api/explain                uitleg bij één bericht en één knop
-app/api/did/session            agent-id en client key, pas na Start; begrenzing
-app/api/did/usage              verbruik melden en tonen
+app/api/anam/session           kortlevend Anam-token, pas na Start
+app/api/timing                 metingen per klik in de serverlog (alleen ontwikkelserver)
 app/page.tsx                   state, bediening, panelen, ontwikkelpaneel
-components/presenter/          gesimuleerde en D-ID-presentator achter één interface
-scripts/did-setup.mjs          agent aanmaken, tegoed tonen (alleen gratis calls)
+components/presenter/          gesimuleerde en Anam-presentator achter één interface
+public/anam/                   beeld en wachtvideo van de avatar
 tests/                         node --test
 ```
 
 ## Hoe een antwoord ontstaat
 
-1. De pagina vraagt `/api/news`: titels, bron, datum en versie van de berichten. Geen brontekst, geen Gemini, geen stream.
-2. Na **Start** (of een knop) stuurt de pagina `articleId`, `action` (`core`, `simpler`, `meaning`, `more`, `question`), eventueel de vraag, en de laatste uitleg bij **dit** bericht naar `/api/explain`.
+1. De pagina vraagt `/api/news`: titels, bron, datum en versie van de berichten. Geen brontekst, geen stream.
+2. Na **Start** (of een knop, of een ingesproken vraag) stuurt de pagina `articleId`, `action` (`core`, `simpler`, `meaning`, `more`, `question`), eventueel de vraag, en de laatste uitleg bij **dit** bericht naar `/api/explain`.
 3. De server zoekt het bericht op in de eigen gegevens. Het model kiest niet welk bericht het is, en bron, datum en link komen nooit uit het model.
-4. Gemini krijgt de systeemprompt, de brontekst, de hulpnotities en de opdracht voor die knop, en geeft `{"spoken": "..."}` terug. De server haalt markdown, URL's, emoji en regieaanwijzingen weg.
-5. De pagina toont dezelfde tekst als ondertiteling en laat de presentator die uitspreken.
+4. Het taalmodel (Qwen via Groq; Mistral of Gemini als reserve) krijgt de systeemprompt, de brontekst, de hulpnotities en de opdracht voor die knop, en geeft `{"spoken": "..."}` terug. De server haalt markdown, URL's, emoji en regieaanwijzingen weg.
+5. De pagina laat de presentator die tekst letterlijk uitspreken en toont dezelfde tekst als ondertiteling.
 
 **Volgend bericht** stopt de lopende uitleg, breekt een lopende aanvraag af, wist de context van het vorige bericht en negeert een antwoord dat te laat binnenkomt. Snel dubbelklikken geeft één aanvraag. **Nog een keer** maakt geen nieuwe aanvraag.
 
@@ -72,39 +72,33 @@ De testberichten staan in [data/test-articles.json](data/test-articles.json): id
 
 ### Testlog
 
-`logs/answers.jsonl` bewaart per antwoord: request-id, bericht, artikelversie, promptversie, knop, `ai` of `fallback`, model, aantal woorden en gemiddelde woorden per zin. Bewust niet: de vraag van de gebruiker of de tekst van het antwoord. `logs/did-usage.jsonl` bewaart het verbruik. Beide staan in `.gitignore`.
+`logs/answers.jsonl` bewaart per antwoord: request-id, bericht, artikelversie, promptversie, knop, `ai` of `fallback`, model, aantal woorden en gemiddelde woorden per zin. Bewust niet: de vraag van de gebruiker of de tekst van het antwoord. Het staat in `.gitignore`. Op Vercel kan niets naar schijf: daar is er geen testlog.
 
-## D-ID: wat de integratie wel en niet kan
+## Anam: wat de integratie wel en niet kan
 
-Gecontroleerd in oktober 2026, in docs.d-id.com en in de typen van `@d-id/client-sdk` (vastgezet op 3.0.6):
+Gecontroleerd in oktober 2026, in anam.ai/docs en in de typen van `@anam-ai/js-sdk` (vastgezet op 4.29.1), en in een live proef:
 
-- **Route.** De oude Talks/Clips Streams heten bij D-ID "legacy"; nieuwe integraties gaan via de Agents SDK. We gebruiken de agent in **`ChatMode.DirectPlayback`**: alleen `speak()`, geen chat en geen LLM van D-ID. De tekst komt dus van onze Gemini-server. Dat werkt met Talks (V2)- en Clips (V3)-agents, niet met Expressive (V4).
-- **Sleutels.** `DID_API_KEY` blijft op de server. De browser krijgt na Start alleen de agent-id en de client key, de door D-ID bedoelde beperkte sleutel. De analytics van de SDK (Mixpanel) staan uit.
-- **Avatar.** Agent `v2_agt_pxhNLRTB`: een **Talks-agent (V2)** met een eigen afbeelding (jongeman met bril, grijze achtergrond). D-ID heeft het gezicht herkend (agentstatus `done`). Een andere agent: zet `DID_AGENT_ID`, `DID_CLIENT_KEY` en `DID_POSTER_URL` in `.env.local` (de waarden staan bij de agent in D-ID Studio, of maak er een met `did-setup.mjs create`). De eerder gemaakte Clips-agent `v2_agt_UCJHlUHn` ("Mary") bestaat nog als alternatief.
-- **Stem.** `nl-NL-MaartenNeural` (Microsoft, via D-ID), passend bij het mannelijke gezicht, tempo 1. Wordt per `speak()` meegestuurd, dus de Engelse stem die bij de agent zelf staat wordt niet gebruikt. Instelbaar met `DID_VOICE_ID` en `DID_VOICE_RATE`. Emoties en gezichtsuitdrukkingen sturen we niet aan: `sentiment` werkt alleen bij Expressive.
-- **Pauze.** D-ID kent geen pauze. Op een *fluent* stream stopt `interrupt()` het spreken echt, en **Verder** laat de rest opnieuw uitspreken, vanaf de zin waar het ongeveer was (geschat uit de verstreken tijd). Zonder fluent stream gaat alleen het geluid uit en loopt het fragment bij D-ID door tot het eind. Dat telt dan mee in het verbruik. Een Talks-agent heeft **geen** fluent stream: Pauze zet dan het geluid uit en toont de rustige idle-video in plaats van het pratende gezicht (zonder idle-video: stilstaand beeld). Bij Verder gaat het verder waar D-ID nu is, dus wat tijdens de pauze werd gezegd is gemist. Bij een vraag, een andere knop of Volgend bericht sluit de app de verbinding: dat stopt het oude fragment echt, en een nieuwe verbinding wordt gemaakt terwijl Gemini het antwoord schrijft. Zonder dat speelde D-ID het antwoord direct na het oude fragment af, zonder stopsignaal ertussen, en bleef het antwoord stil. Echt onderbreken kan alleen met een Clips-agent op een Pro-avatar (zoals `v2_agt_UCJHlUHn`, nog te bevestigen bij de eerste verbinding) of een Expressive-agent. Tussen fragmenten toont de app de idle-video van de agent.
-- **Ondertiteling.** D-ID meldt alleen begin en eind van het spreken, geen timing per zin, en `speak()` gaf bij onze Talks-agent geen duur terug. Daarom meten we zelf. De browser meet het geluidsniveau van de stream en schuift de markering een zin op na een stilte van minstens 300 ms (de pauze die de stem na een zin houdt). Dat is gemeten, niet geschat, maar een lange pauze midden in een zin kan de markering te vroeg laten opschuiven, en een korte pauze na een zin te laat. Bij "Nog een keer" uit het geheugen worden de gemeten tijden opnieuw gebruikt. Lukt meten niet (geen geluidsspoor of geen Web Audio), dan blijft het vak **Meeleestekst** zonder markering. Een SSML-pauze (`<break>`) na elke zin zou het zinseinde duidelijker maken, maar D-ID las die code bij onze Talks-agent hardop voor ("break time is gelijk aan…"), ondanks `ssml: true`. Daarom staat dat standaard uit (`DID_SENTENCE_BREAKS=1` om opnieuw te proberen).
-- **Nog een keer.** Een volledig gesproken fragment wordt in het geheugen van de browser opgenomen (MediaRecorder) en lokaal opnieuw afgespeeld, zonder nieuwe video bij D-ID. Het wordt nergens opgeslagen of verstuurd. Lukt opnemen niet, of staat `DID_LOCAL_REPLAY=0`, dan vraagt herhalen een nieuwe `speak()`.
-- **Opruimen.** De verbinding sluit bij het verlaten van de pagina, bij een verborgen tabblad en na 2 minuten stilstand. Die timer loopt alleen als Nova klaar of gepauzeerd is, nooit tijdens genereren, verbinden of spreken. Een verbinding die nog wordt opgebouwd als er wordt afgesloten, wordt geannuleerd (SDK 3.0.6: `disconnect()` annuleert een lopende `connect()`), en komt hij toch klaar, dan gaat hij meteen dicht. De volgende knop verbindt opnieuw.
-- **Stoppen vóór Nova begint.** Een verstuurde `speak()` die nog niet speelt, kan `interrupt()` niet stoppen. Bij een Talks-agent sluit de app dan de verbinding, anders zou het oude fragment alsnog klinken. Bij een fluent stream staat het geluid uit tot het oude fragment begint, dan volgt direct `interrupt()`, en pas na het einde daarvan gaat het nieuwe antwoord naar D-ID. Na elke wachtstap controleert de presentator of het fragment nog het nieuwste is.
-- **Metingen (ontwikkelserver).** Per klik één regel `[timing]` in de serverlog: cachestatus (`ready`, `pending` of `miss`), duur en afloop van elke modelpoging, tekst binnen, verbinden (en welk streamtype), `speak()` verstuurd en geaccepteerd, eerste beeld en eerste geluid, en waarom een verbinding dicht ging. Alleen getallen, geen tekst. Een klik die nooit hoorbaar werd, staat erbij als vervangen.
+- **Alleen onze tekst.** De persona wordt per sessie samengesteld op de server (`/api/anam/session`): ons gezicht, een Nederlandse stem en **geen taalmodel van Anam** (`llmId: CUSTOMER_CLIENT_V1`, "Disable LLM"). Nova zegt alleen wat onze server schrijft, via een talk-stream. Een persona uit Anam Lab wordt niet gebruikt.
+- **Sleutels.** `ANAM_API_KEY` blijft op de server. De browser krijgt na Start alleen een kortlevend sessietoken.
+- **Avatar en stem.** Avatar "Nova (foto)", gemaakt van de foto met het model Cara 4. Stem "Peter – Dutch e-learning narrator" (ElevenLabs, via Anam), de enige Nederlandse stem die we in de catalogus vonden.
+- **Snelheid.** In de live proef: verbonden in 0,6 tot 1,5 s, Nova hoorbaar 2,1 s na Start en 1,3 s na een knop (waarvan ongeveer 0,7 s tekst). Bij D-ID was dat 11 tot 16 s.
+- **Fragmenten.** Elk fragment krijgt een eigen correlationId. Anam stuurt die terug in de transcriptgebeurtenissen, verpakt als `external::<id>::…`. Zo is een laat event van een oud fragment zeker te herkennen. Komt er geen id mee, dan hoort het eerste nieuwe Anam-bericht bij het fragment.
+- **Pauze.** Echt: `interruptPersona()` stopt meteen, en **Verder** spreekt de rest uit vanaf de zin waar Nova was.
+- **Ondertiteling.** De zin in beeld volgt wat Anam al heeft uitgesproken (het transcript van de persona). In de live proef liep dat goed gelijk met de stem.
+- **Vraag inspreken.** De SDK krijgt een eigen, stille geluidsstroom en vraagt dan zelf nooit om de microfoon. Pas als de gebruiker op **Spreek je vraag in** tikt, vraagt de browser toestemming en sluiten we de microfoon op die stroom aan, tot Anam het einde van de vraag meldt (of na 20 seconden, of bij nog een tik). Daarna gaat de microfoon helemaal uit. Anam maakt van de stem tekst; die tekst gaat als gewone vraag naar onze server. Wij bewaren de stem en de vraag niet.
+- **Beeld vóór Start.** Het stilstaande beeld en de wachtvideo van dezelfde avatar, met dezelfde uitsnede als de stream. De video verschijnt pas bij het eerste echte beeld van Anam, zodat er geen leeg vlak tussen zit.
+- **Opruimen.** De verbinding sluit bij het verlaten van de pagina, bij een verborgen tabblad en na 2 minuten stilstand. Die timer loopt alleen als Nova klaar of gepauzeerd is, nooit tijdens genereren, verbinden, spreken of luisteren. Een sessie duurt hooguit 15 minuten. Een verbinding die nog wordt opgebouwd als er wordt afgesloten, gaat meteen dicht zodra hij klaar is.
+- **Metingen (ontwikkelserver).** Per klik één regel `[timing]` in de serverlog: cachestatus (`ready`, `pending` of `miss`), duur en afloop van elke modelpoging, tekst binnen, verbinden, versturen, eerste beeld, en waarom een verbinding dicht ging. Alleen getallen, geen tekst.
 
-### Kosten en verbruik
+### Kosten
 
-Het tegoed is ongeveer 20 minuten voor het hele prototype. Daarom:
-
-- In de ontwikkelmodus wordt D-ID niet aangeroepen. De interface, de bronnen en de antwoordlogica zijn dan volledig te testen.
-- De echte stream start alleen na **Start**.
-- Per `speak()` registreert de app de videoduur die de D-ID-API teruggeeft (**gemeten** door D-ID). Bij het sluiten registreert ze hoe lang de verbinding openstond (**schatting** met de klok van de browser).
-- `/api/did/session` start geen nieuwe sessie meer zodra de grootste van die twee boven `DID_BUDGET_SECONDS` uitkomt (standaard 1200).
-- Het ontwikkelpaneel (in `npm run dev`) toont beide getallen en het tegoed volgens D-ID (`GET /credits`).
-- Of D-ID de verbindingstijd of alleen de gesproken tijd factureert, staat niet in de documentatie. 20 minuten klok is dus niet gegarandeerd 20 minuten facturering.
+Anam rekent per minuut sessie. In de ontwikkelmodus wordt Anam niet aangeroepen; de echte stream start pas na **Start**. Een openbare deployment kan door iedereen met de link minuten verbruiken: zet er bescherming op (Vercel Authentication) of houd de link voor jezelf.
 
 ## Taal en journalistiek
 
 De regels staan in `SYSTEM` in [lib/prompt.ts](lib/prompt.ts), gegroepeerd als rol, taal, opbouw, gesprek, journalistieke zorgvuldigheid, presentatie, veiligheid en antwoordformaat. Verander je de inhoud, verhoog dan `PROMPT_VERSION`. De opdracht per knop staat in `TASKS`. De basisuitleg is 60 tot 90 woorden: een instelbaar startpunt (`NOVA_CORE_WORDS`), geen onderzoeksuitkomst.
 
-Valt Gemini weg (geen sleutel, quotum, time-out), dan kiest de terugval in [lib/fallback.ts](lib/fallback.ts) zinnen uit de bron. Ze verzint niets, maar herschrijft ook niet. De interface meldt het dan: "De AI werkt nu niet".
+Valt het taalmodel weg (geen sleutel, quotum, time-out), dan kiest de terugval in [lib/fallback.ts](lib/fallback.ts) zinnen uit de bron. Ze verzint niets, maar herschrijft ook niet. De interface meldt het dan: "De AI werkt nu niet".
 
 ## Onderbouwing van de belangrijkste keuzes
 
@@ -126,12 +120,9 @@ Doelgroep: we houden **18–24 jaar** aan, zoals in ons doelgroeponderzoek. Het 
 
 ## Bekende beperkingen
 
-- **Geen echte D-ID-stream getest.** Het account had op 27 oktober 2026 0 credits (plan `deid-trial`), en betaalde streams starten we niet automatisch. De stemkwaliteit van Maarten, de lipsync op deze foto, MediaRecorder op de D-ID-stream en de werkelijke facturering zijn dus nog onbekend.
-- **Pauze bij deze agent is geen echte pauze** (Talks heeft geen interrupt): het fragment loopt bij D-ID door en telt mee in het verbruik. Houd fragmenten daarom kort (de basisuitleg is 60 tot 90 woorden, ongeveer 30 seconden).
-- **Zinslengte.** Gemini 3.1 Flash Lite houdt zich niet altijd aan ongeveer 10 woorden per zin: bij "Wat betekent dit?" en "Vertel meer" gemiddeld 13 tot 16. Volg dat in `wordsPerSentence` in het testlog.
-- **Gemini kan traag zijn.** Soms 10 tot 30 seconden, of een time-out gevolgd door de terugval. Voor Start merk je dat niet: de basisuitleg van het eerste bericht wordt al gemaakt zodra de pagina de berichten ophaalt, en die van het volgende bericht terwijl de gebruiker luistert. Daarna wordt hij bewaard in het geheugen van de server (per artikel- en promptversie, alleen de basisuitleg, geen vragen; zie `lib/corecache.ts`). Iedereen hoort zo ook dezelfde kern. De andere knoppen wachten nog wel op Gemini. Sneller: zet `GROQ_API_KEY` (gratis, console.groq.com) en/of `MISTRAL_API_KEY` in `.env.local`. De volgorde is Groq, Mistral, Gemini; alleen aanbieders met een sleutel doen mee, en de volgende neemt het over als de eerste faalt of te traag is (`lib/ai.ts`, `lib/groq.ts`, `lib/mistral.ts`). Het testlog toont per antwoord welk model het was. Let op: de gratis tier van Mistral mag invoer gebruiken voor training, ook vragen van deelnemers. Zet voor een gebruikerstest `GEMINI_MODELS=gemini-3.1-flash-lite`.
-- **Herhalen uit het geheugen.** Of D-ID dat in de voorwaarden toestaat, hebben we niet kunnen bevestigen. Uit te zetten met `DID_LOCAL_REPLAY=0`.
-- **Geen spraakinvoer.** De bestaande infrastructuur ondersteunt dat niet betrouwbaar, dus geen microfoonknop.
-- **Rate limit en verbruiksteller** staan in het geheugen van één serverproces en in lokale bestanden: genoeg voor een lokaal prototype, niet voor productie.
+- **Zinslengte.** Qwen houdt zich meestal aan korte zinnen (ongeveer 7 tot 8 woorden), maar een reserve-model zoals gpt-oss schrijft langere (12 tot 17). Volg dat in `wordsPerSentence` en `model` in het testlog.
+- **Minuutlimiet van Groq.** De gratis tier geeft per model 8000 tokens per minuut, ongeveer 2 antwoorden. Daarna neemt het volgende model het over (gpt-oss, dan Gemini). Voor een gebruikerstest: de betaalde Developer-tier van Groq.
+- **Spraakherkenning door Anam.** Een ingesproken vraag gaat naar Anam om er tekst van te maken. Vermeld dat in de uitleg voor deelnemers.
+- **Rate limit en voorbereide basisuitleg** staan in het geheugen van één serverproces: genoeg voor een lokaal prototype, niet voor productie.
 - **Brontekst in de repository.** `data/test-articles.json` bevat de feedtekst van drie NOS-berichten. Is de repository openbaar, overweeg dan dat bestand lokaal te houden.
 - **Bekende kwetsbaarheden in Next.js 15.5.25** (`npm audit`) bestonden al. We houden de frameworkversie bewust gelijk; los dit op met de kleinste veilige stap (`npm audit fix` zonder `--force`).
