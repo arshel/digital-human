@@ -5,6 +5,7 @@ import * as groq from './groq';
 import * as mistral from './mistral';
 import { buildPrompt, PROMPT_VERSION, SYSTEM, type Action, type Previous } from './prompt';
 import { cleanSpoken } from './spoken';
+import { pickHardWords, type HardWord } from './words';
 
 // De AI-service. De rest van de app roept alleen generateExplanation() aan en weet niet welk
 // model erachter zit. Het antwoord hoort altijd bij precies één bericht: dat kiest de server,
@@ -17,6 +18,8 @@ export type Explanation = {
   promptVersion: string;
   // Elke modelpoging met duur en afloop, voor de metingen. Geen tekst.
   attempts: gemini.Attempt[];
+  // Moeilijke woorden in `spoken`, met uitleg (zie lib/words.ts). Leeg bij de terugval.
+  words: HardWord[];
 };
 
 // Op volgorde: Groq, Mistral, Gemini, maar alleen die met een sleutel in .env.local. Faalt de
@@ -69,7 +72,8 @@ export async function generateExplanation({
     const parsed = JSON.parse(text);
     const spoken = typeof parsed.spoken === 'string' ? cleanSpoken(parsed.spoken) : '';
     if (!spoken) throw new Error(`Onbruikbaar antwoord: ${text.slice(0, 200)}`);
-    return { spoken, mode: 'ai', model, promptVersion: PROMPT_VERSION, attempts };
+    const words = pickHardWords(parsed.woorden, spoken, cleanSpoken);
+    return { spoken, mode: 'ai', model, promptVersion: PROMPT_VERSION, attempts, words };
   } catch (err) {
     console.error('[ai] taalmodel niet gebruikt, terugval op regels:', err instanceof Error ? err.message : err);
     return {
@@ -78,6 +82,7 @@ export async function generateExplanation({
       model: null,
       promptVersion: PROMPT_VERSION,
       attempts,
+      words: [],
     };
   }
 }

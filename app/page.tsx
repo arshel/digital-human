@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -32,6 +33,7 @@ import {
 } from "@/components/icons";
 import { splitSentences } from "@/lib/spoken";
 import type { ArticleMeta } from "@/lib/articles";
+import { linkWords, spokenExplanation, type HardWord, type Segment } from "@/lib/words";
 import type { Action, Previous } from "@/lib/prompt";
 
 // Alle state van het prototype staat hier. De presentator (gesimuleerd of Anam) zit achter
@@ -56,6 +58,8 @@ type Fragment = {
   articleVersion: string;
   promptVersion: string;
   requestId: string;
+  // Moeilijke woorden om aan te tikken (zie lib/words.ts).
+  words: HardWord[];
 };
 
 type Problem = { message: string; retry?: () => void };
@@ -128,6 +132,10 @@ export default function Page() {
   // Met een echte avatar: het nieuwe antwoord, tot Nova het begint uit te spreken. Zo verschijnen tekst en
   // stem tegelijk, in plaats van eerst de tekst en seconden later pas de stem.
   const waiting = useRef<Fragment | null>(null);
+  // Een aangetikt woord dat Nova nu uitlegt, en waar ze daarna verdergaat (als ze aan het
+  // vertellen was). `started`: de uitleg is hoorbaar begonnen.
+  const aside = useRef<{ resume: { fragment: Fragment; from: number } | null; started: boolean } | null>(null);
+  const [asideWord, setAsideWord] = useState<HardWord | null>(null);
   // Metingen per klik voor de ontwikkelserver (alleen getallen; zie app/api/timing).
   const cycleTiming = useRef(new CycleTiming());
   const sendTiming = useCallback((report: TimingReport | null) => {
@@ -215,6 +223,7 @@ export default function Page() {
     const controller = new AbortController();
     inflight.current = controller;
     waiting.current = null;
+    endAside();
     if (realAvatar) sendTiming(cycleTiming.current.start(mine, action, performance.now()));
     presenter.stop();
     setPreparing(action);
@@ -301,6 +310,20 @@ export default function Page() {
     }
   }, [presenter.state]);
 
+  // Na de uitleg van een woord: verder waar Nova was, als dat bericht nog in beeld is.
+  useEffect(() => {
+    const current = aside.current;
+    if (!current) return;
+    if (presenter.state === "speaking") current.started = true;
+    if (!current.started || presenter.state !== "ready") return;
+    endAside();
+    if (current.resume && current.resume.fragment === fragment) {
+      presenter.speak(current.resume.fragment.sentences, undefined, current.resume.from);
+    }
+    // presenter is elke render een nieuw object; alleen de status telt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presenter.state, fragment]);
+
   function start() {
     if (started || !article) return;
     setStarted(true);
@@ -322,6 +345,7 @@ export default function Page() {
     waiting.current = null;
     presenter.stop();
     setIndex(nextIndex);
+    endAside();
     setFragment(null);
     setTranscript(false);
     setHistory([]);
@@ -344,6 +368,23 @@ export default function Page() {
   function again() {
     if (blocked || !fragment) return;
     presenter.replay();
+  }
+
+  // Woord aangetikt: Nova legt het uit, en gaat daarna verder bij de zin waar ze was.
+  function explainWord(word: HardWord) {
+    if (!fragment || preparing) return;
+    const telling = speaking || paused;
+    aside.current = {
+      resume: telling ? { fragment, from: Math.max(0, presenter.sentence) } : null,
+      started: false,
+    };
+    setAsideWord(word);
+    presenter.speak([spokenExplanation(word)]);
+  }
+
+  function endAside() {
+    aside.current = null;
+    setAsideWord(null);
   }
 
   function ask(question: string) {
@@ -427,8 +468,11 @@ export default function Page() {
   // Zonder timing per zin blijft de hele tekst als meeleestekst onder het beeld staan; alleen
   // presentatoren met timing per zin krijgen wisselende ondertiteling in beeld.
   const timedCaptions = presenter.timing !== "none";
-  const activeSentence =
-    fragment?.sentences[presenter.sentence >= 0 ? presenter.sentence : 0];
+  // Tijdens de uitleg van een woord gaat de zin-teller over die uitleg, niet over het bericht.
+  const spokenIndex = asideWord ? -1 : presenter.sentence;
+  const linked = useMemo(() => (fragment ? linkWords(fragment.sentences, fragment.words ?? []) : []), [fragment]);
+  const activeIndex = presenter.sentence >= 0 ? presenter.sentence : 0;
+  const activeSentence = asideWord ? spokenExplanation(asideWord) : fragment?.sentences[activeIndex];
 
   return (
     <div className="app">
@@ -515,7 +559,13 @@ export default function Page() {
               className={`stage-caption${timedCaptions ? "" : " is-reading"}`}
               aria-label={timingLabel}
             >
-              {timedCaptions ? activeSentence : fragment.spoken}
+              {asideWord ? (
+                spokenExplanation(asideWord)
+              ) : timedCaptions ? (
+                <Linked segments={linked[activeIndex] ?? []} onWord={explainWord} />
+              ) : (
+                fragment.spoken
+              )}
             </p>
           )}
           <div className="stage-toolbar">
@@ -653,15 +703,18 @@ export default function Page() {
                 <p className="reading-label">
                   {timedCaptions ? "Nova vertelt" : "Meeleestekst"}
                 </p>
+                {asideWord && (
+                  <p className="reading-label" role="status">
+                    Uitleg: {asideWord.word}. {asideWord.explanation}
+                  </p>
+                )}
                 <div className="captions-text">
-                  {fragment.sentences.map((sentence, i) => (
+                  {fragment.sentences.map((_, i) => (
                     <p
                       key={i}
-                      className={
-                        i === presenter.sentence ? "is-spoken" : undefined
-                      }
+                      className={i === spokenIndex ? "is-spoken" : undefined}
                     >
-                      {sentence}
+                      <Linked segments={linked[i] ?? []} onWord={explainWord} />
                     </p>
                   ))}
                 </div>
@@ -836,12 +889,9 @@ export default function Page() {
         title="Volledige tekst"
       >
         <div className="transcript-body">
-          {fragment?.sentences.map((sentence, i) => (
-            <p
-              key={i}
-              className={i === presenter.sentence ? "is-spoken" : undefined}
-            >
-              {sentence}
+          {fragment?.sentences.map((_, i) => (
+            <p key={i} className={i === spokenIndex ? "is-spoken" : undefined}>
+              <Linked segments={linked[i] ?? []} onWord={explainWord} />
             </p>
           ))}
         </div>
@@ -1145,6 +1195,47 @@ function MicButton({
         <p className="question-privacy" role="alert">
           De microfoon werkt nu niet. Typ je vraag.
         </p>
+      )}
+    </>
+  );
+}
+
+// Een zin met moeilijke woorden als link: aantikken en Nova legt het woord uit.
+const WORD_LINK: React.CSSProperties = {
+  font: "inherit",
+  color: "inherit",
+  background: "none",
+  border: 0,
+  padding: 0,
+  textDecoration: "underline",
+  textDecorationThickness: "2px",
+  textUnderlineOffset: "0.18em",
+  cursor: "pointer",
+};
+
+function Linked({
+  segments,
+  onWord,
+}: {
+  segments: Segment[];
+  onWord: (word: HardWord) => void;
+}) {
+  return (
+    <>
+      {segments.map((segment, i) =>
+        segment.word ? (
+          <button
+            key={i}
+            type="button"
+            style={WORD_LINK}
+            aria-label={`Wat betekent ${segment.word.word}? Nova legt het uit.`}
+            onClick={() => onWord(segment.word!)}
+          >
+            {segment.text}
+          </button>
+        ) : (
+          <span key={i}>{segment.text}</span>
+        ),
       )}
     </>
   );

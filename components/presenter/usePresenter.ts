@@ -103,7 +103,7 @@ export function usePresenter(
     // Gelezen tijdens het renderen; elke statuswijziging rendert opnieuw.
     canResume: engine.current?.canResume ?? false,
     connect: () => get()?.connect() ?? Promise.resolve(false),
-    speak: (sentences: string[], cycle?: number) => get()?.speak(sentences, 0, cycle) ?? Promise.resolve(),
+    speak: (sentences: string[], cycle?: number, from = 0) => get()?.speak(sentences, from, cycle) ?? Promise.resolve(),
     pause: () => get()?.pause(),
     resume: () => get()?.resume(),
     replay: () => get()?.replay(),

@@ -15,6 +15,7 @@ const answer = (mode: Explanation['mode'] = 'ai'): Explanation => ({
   model: mode === 'ai' ? 'm' : null,
   promptVersion: 'p1',
   attempts: [],
+  words: [],
 });
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

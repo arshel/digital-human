@@ -74,6 +74,7 @@ export async function POST(req: Request) {
     articleMs,
     generateMs,
     attempts,
+    hardWords: answer.words.length,
     words: answer.spoken.split(/\s+/).length,
     // Taalniveau volgen zonder de tekst zelf te bewaren: richtlijn is ongeveer 10 woorden per zin.
     wordsPerSentence: Math.round((answer.spoken.split(/\s+/).length / splitSentences(answer.spoken).length) * 10) / 10,
@@ -86,6 +87,7 @@ export async function POST(req: Request) {
     promptVersion: answer.promptVersion,
     mode: answer.mode,
     spoken: answer.spoken,
+    words: answer.words,
     // Voor de metingen (app/api/timing): geen tekst.
     timing: { cache: answer.cache, articleMs, generateMs, attempts },
   });
