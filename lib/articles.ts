@@ -7,7 +7,7 @@ import { getStories } from './news';
 //
 // NEWS_MODE=test (standaard): de vaste testselectie uit data/test-articles.json, zodat elke
 // deelnemer aan de gebruikerstest dezelfde berichten krijgt. NEWS_MODE=live: de actuele
-// NOS-feed (lib/news.ts), zoals voorheen.
+// NOS-feeds Binnenland en Politiek (lib/news.ts, lib/feeds.ts): Nederlands nieuws.
 
 export type NewsArticle = {
   id: string;

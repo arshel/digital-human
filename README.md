@@ -36,7 +36,7 @@ npm run typecheck
 ```
 data/test-articles.json        vaste testselectie: 3 NOS-berichten, brontekst + hulpnotities
 lib/articles.ts                berichten per modus (test of live), artikelversie (hash)
-lib/news.ts                    NOS-feed voor NEWS_MODE=live (15 min cache, terugval op demo)
+lib/news.ts, lib/feeds.ts      NOS Binnenland en Politiek voor NEWS_MODE=live (15 min cache)
 lib/prompt.ts                  systeemprompt, PROMPT_VERSION, opdracht per knop
 lib/ai.ts                      generateExplanation(): Groq, Mistral of Gemini, of de terugval
 lib/groq.ts, lib/mistral.ts    taalmodellen via de chat-API in OpenAI-vorm (lib/openai-chat.ts)
@@ -70,7 +70,7 @@ tests/                         node --test
 
 ### Inhoud vervangen
 
-De testberichten staan in [data/test-articles.json](data/test-articles.json): id, korte titel, oorspronkelijke titel, uitgever, URL, publicatie- en updatedatum, ophaaldatum, brontekst, en hulpnotities (kernfeiten, voorwaarden, onzekerheden). Vervang of voeg toe met dezelfde velden. De artikelversie rekent de server zelf uit. Een test controleert dat elk getal in de hulpnotities ook in de brontekst staat. Met `NEWS_MODE=live` gebruikt Nova de actuele NOS-feed (zonder hulpnotities).
+De testberichten staan in [data/test-articles.json](data/test-articles.json): id, korte titel, oorspronkelijke titel, uitgever, URL, publicatie- en updatedatum, ophaaldatum, brontekst, en hulpnotities (kernfeiten, voorwaarden, onzekerheden). Vervang of voeg toe met dezelfde velden. De artikelversie rekent de server zelf uit. Een test controleert dat elk getal in de hulpnotities ook in de brontekst staat. Met `NEWS_MODE=live` gebruikt Nova het Nederlandse nieuws van vandaag: de NOS-feeds Binnenland en Politiek (zonder hulpnotities). Overzichten van meerdere onderwerpen ("30/10 in Nieuwsuur: …", de Wekdienst) en podcasts vallen af; Buitenland en Economie (veel buitenlands nieuws) staan uit. Andere feeds: `NEWS_FEEDS`.
 
 ### Testlog
 

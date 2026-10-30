@@ -10,11 +10,11 @@ import type { Previous } from './prompt';
 //    het bericht waar de vraag over gaat, of geen.
 // 3. Gevonden: Nova beantwoordt de vraag uit dát bericht, en zegt eerst dat het om een ander
 //    bericht gaat. De pagina gaat dan naar dat bericht, zodat bron en datum kloppen.
-//    Niets gevonden: het eerste, eerlijke antwoord, plus dat het ook niet in het andere nieuws
-//    van vandaag staat. Iets onzeker (zoeken mislukt, keuze klopt niet): het eerste antwoord.
+//    Niets gevonden: het eerste, eerlijke antwoord, plus dat het ook niet in het andere
+//    (Nederlandse) nieuws van vandaag staat. Iets onzeker (zoeken mislukt, keuze klopt niet): het eerste antwoord.
 
 export const OTHER_STORY = 'Dat gaat over een ander bericht van vandaag.';
-export const NOT_FOUND = 'Ik vond het ook niet in het andere nieuws van vandaag.';
+export const NOT_FOUND = 'Ik vond het ook niet in het andere Nederlandse nieuws van vandaag.';
 
 export type Candidate = { id: string; title: string; opening: string };
 
@@ -27,13 +27,15 @@ export type QuestionDeps<A extends Answer> = {
   route: (candidates: Candidate[]) => Promise<{ id: string | null; attempts: unknown[] }>;
 };
 
-const MAX_CANDIDATES = 30;
+// Alle berichten van vandaag (Binnenland en Politiek samen zijn er zo'n 40), elk kort: titel en
+// begin. Een te krappe grens liet een bericht verderop in de lijst buiten beeld.
+const MAX_CANDIDATES = 60;
 
 export function candidates(articles: NewsArticle[], currentId: string): Candidate[] {
   return articles
     .filter((a) => a.id !== currentId)
     .slice(0, MAX_CANDIDATES)
-    .map((a) => ({ id: a.id, title: a.title, opening: a.body.replace(/\s+/g, ' ').slice(0, 160) }));
+    .map((a) => ({ id: a.id, title: a.title, opening: a.body.replace(/\s+/g, ' ').slice(0, 110) }));
 }
 
 // Het antwoord van het model op de routeervraag: alleen een id die echt in de lijst staat.

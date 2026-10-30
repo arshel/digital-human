@@ -1077,8 +1077,9 @@ export default function Page() {
           <section>
             <h3>Waar komt het nieuws vandaan?</h3>
             <p>
-              Nova vertelt alleen wat in de nieuwsberichten van vandaag staat.
-              Vraag je naar een ander bericht, dan gaat Nova naar dat bericht.
+              Nova vertelt over Nederlands nieuws van vandaag, van de NOS. Nova
+              gebruikt alleen wat in die berichten staat. Vraag je naar een
+              ander bericht, dan gaat Nova naar dat bericht.
             </p>
             <p>
               Bij elk bericht staat de bron. Met ‘Bekijk bron’ lees je het hele
@@ -1164,7 +1165,7 @@ function DevPanel({
         <dd>
           {config.newsMode === "test"
             ? "vaste testselectie"
-            : "actuele NOS-feed"}
+            : "NOS Binnenland en Politiek (vandaag)"}
         </dd>
         <dt>Presentator</dt>
         <dd>{presenterState}</dd>

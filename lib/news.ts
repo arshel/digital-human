@@ -1,4 +1,5 @@
 import demoArticles from '@/data/articles.json';
+import { feedUrls, mergeFeeds } from './feeds';
 
 export type Article = {
   id: string;
@@ -12,15 +13,20 @@ export type Article = {
 
 export type StorySet = { stories: Article[]; live: boolean };
 
-const FEED_URL = 'https://feeds.nos.nl/nosnieuwsalgemeen';
+// Nederlands nieuws: NOS Binnenland en Politiek (zie lib/feeds.ts; instelbaar met NEWS_FEEDS).
+const FEEDS = feedUrls(process.env.NEWS_FEEDS);
 const FEED_SOURCE = 'NOS';
 const CACHE_MS = 15 * 60 * 1000;
 const FAILED_CACHE_MS = 60 * 1000;
 const MAX_BODY = 6000;
 
-// Alleen server-side: haalt de NOS-feed op en houdt die 15 minuten vast, zodat de
-// verhalen niet midden in een gesprek verschuiven. Mislukt de feed, dan de demo-artikelen.
-let cache: { at: number; ttl: number; pool: Article[]; live: boolean } | null = null;
+// Alleen server-side: haalt de NOS-feeds op en houdt ze 15 minuten vast, zodat de verhalen niet
+// midden in een gesprek verschuiven. Mislukken alle feeds, dan de demo-artikelen.
+// Op globalThis en met één lopende verversing: in de ontwikkelserver heeft elke route een eigen
+// kopie van deze module, en /api/news en /api/explain moeten dezelfde berichten zien.
+type Pool = { at: number; ttl: number; pool: Article[]; live: boolean };
+const store = globalThis as typeof globalThis & { __novaNews?: { cache: Pool | null; loading: Promise<Pool> | null } };
+const news = (store.__novaNews ??= { cache: null, loading: null });
 
 const ENTITIES: Record<string, string> = {
   nbsp: ' ', quot: '"', apos: "'", lt: '<', gt: '>',
@@ -76,20 +82,25 @@ export function parseFeed(xml: string, source: string): Article[] {
   });
 }
 
-async function loadPool() {
-  if (cache && Date.now() - cache.at < cache.ttl) return cache;
+async function loadPool(): Promise<Pool> {
+  if (news.cache && Date.now() - news.cache.at < news.cache.ttl) return news.cache;
+  news.loading ??= fetchPool().finally(() => (news.loading = null));
+  return news.loading;
+}
 
-  try {
-    const res = await fetch(FEED_URL, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
-    if (!res.ok) throw new Error(`feed ${res.status}`);
-    const pool = parseFeed(await res.text(), FEED_SOURCE);
-    if (pool.length === 0) throw new Error('feed bevat geen bruikbare berichten');
-    cache = { at: Date.now(), ttl: CACHE_MS, pool, live: true };
-  } catch (err) {
-    console.error('[news] NOS-feed niet gebruikt, terugval op demo-artikelen:', err);
-    cache = { at: Date.now(), ttl: FAILED_CACHE_MS, pool: demoArticles, live: false };
-  }
-  return cache;
+async function fetchPool(): Promise<Pool> {
+  const results = await Promise.allSettled(
+    FEEDS.map(async (url) => {
+      const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+      if (!res.ok) throw new Error(`${url}: ${res.status}`);
+      return parseFeed(await res.text(), FEED_SOURCE);
+    }),
+  );
+  for (const r of results) if (r.status === 'rejected') console.error('[news] NOS-feed niet gelezen:', r.reason);
+  const pool = mergeFeeds(results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : [])));
+  if (pool.length) return (news.cache = { at: Date.now(), ttl: CACHE_MS, pool, live: true });
+  console.error('[news] geen bruikbare NOS-berichten, terugval op demo-artikelen');
+  return (news.cache = { at: Date.now(), ttl: FAILED_CACHE_MS, pool: demoArticles, live: false });
 }
 
 // Zoveel verhalen noemt de opening. De rest van de feed staat erachter, zodat je
