@@ -163,7 +163,9 @@ export class AnamPresenter implements Presenter {
       this.outgoing ??= this.deps.audio();
       await client.streamToVideoElement(this.video.id, this.outgoing.stream);
       // Wachten op het eerste echte beeld, maar nooit eindeloos.
-      await Promise.race([playing, new Promise((resolve) => setTimeout(resolve, FIRST_FRAME_MS))]);
+      let frameTimer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([playing, new Promise((resolve) => (frameTimer = setTimeout(resolve, FIRST_FRAME_MS)))]);
+      clearTimeout(frameTimer);
       if (this.building === client) this.building = null;
       if (!current()) return this.abandon(client);
       this.client = client;
@@ -272,6 +274,7 @@ export class AnamPresenter implements Presenter {
     this.listening = true;
     this.heard = '';
     this.listenTimer = setTimeout(() => this.finishListening(true), LISTEN_MAX_MS);
+    (this.listenTimer as { unref?: () => void }).unref?.();
     this.events.onListening?.('on');
   }
 
