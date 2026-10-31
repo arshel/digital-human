@@ -3,6 +3,7 @@ import { fallbackExplanation } from './fallback';
 import * as gemini from './gemini';
 import * as groq from './groq';
 import * as mistral from './mistral';
+import * as openai from './openai';
 import { buildPrompt, buildRoutePrompt, PROMPT_VERSION, ROUTE_SYSTEM, SYSTEM, type Action, type Previous } from './prompt';
 import { pickRoute, type Candidate } from './questions';
 import { cleanSpoken } from './spoken';
@@ -25,14 +26,14 @@ export type Explanation = {
   aboutArticle?: boolean;
 };
 
-// Op volgorde: Groq, Mistral, Gemini, maar alleen die met een sleutel in .env.local. Faalt de
+// Op volgorde: OpenAI, Groq, Mistral, Gemini, maar alleen die met een sleutel in .env.local. Faalt de
 // eerste (of is die te traag), dan de volgende. Andere volgorde: AI_PROVIDERS=mistral,gemini.
-const PROVIDERS = { groq, mistral, gemini };
-const KEYS = { groq: 'GROQ_API_KEY', mistral: 'MISTRAL_API_KEY', gemini: 'GEMINI_API_KEY' } as const;
+const PROVIDERS = { openai, groq, mistral, gemini };
+const KEYS = { openai: 'OPENAI_API_KEY', groq: 'GROQ_API_KEY', mistral: 'MISTRAL_API_KEY', gemini: 'GEMINI_API_KEY' } as const;
 type Provider = keyof typeof PROVIDERS;
 
 export function aiProviders(): Provider[] {
-  const order = (process.env.AI_PROVIDERS || 'groq,mistral,gemini').split(',').map((p) => p.trim());
+  const order = (process.env.AI_PROVIDERS || 'openai,groq,mistral,gemini').split(',').map((p) => p.trim());
   const usable = order.filter((p): p is Provider => p in PROVIDERS && !!process.env[KEYS[p as Provider]]);
   // Geen enkele sleutel: Gemini, zodat de foutmelding zegt welke sleutel ontbreekt.
   return usable.length ? usable : ['gemini'];
