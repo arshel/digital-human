@@ -6,6 +6,12 @@ const MAX_CHARS = 1400;
 
 export function cleanSpoken(raw: string) {
   const text = raw
+    // Tekens waar een stem over kan struikelen: onzichtbare afbreek- en scheidingstekens weg,
+    // "harde" koppelstreepjes (Willem‑Alexander) gewoon, een gedachtestreepje wordt een komma.
+    .replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, '')
+    .replace(/[\u2010-\u2012]/g, '-')
+    .replace(/\s+[\u2013\u2014]\s+/g, ', ')
+    .replace(/[\u2013\u2014]/g, '-')
     .replace(/\[[^\]]*\]/g, ' ') // [pauze], [glimlacht]
     .replace(/\((?:lacht|glimlacht|pauze|zucht|knikt)[^)]*\)/gi, ' ')
     .replace(/https?:\/\/\S+|www\.\S+/gi, ' ')

@@ -65,6 +65,13 @@ describe('gesproken tekst', () => {
     assert.equal(cleanSpoken(raw), 'Kern: Dit is nieuws zie of. Klaar.');
   });
 
+  it('maakt tekens gewoon waar de stem over kan struikelen', () => {
+    // Zo kwam het live uit het taalmodel: harde koppelstreepjes, een gedachtestreepje en een
+    // onzichtbaar afbreekstreepje midden in een woord.
+    const raw = 'Koning Willem\u2011Alexander bezocht de brand\u00ADweer \u2013 en de energie\u2011infrastructuur.';
+    assert.equal(cleanSpoken(raw), 'Koning Willem-Alexander bezocht de brandweer, en de energie-infrastructuur.');
+  });
+
   it('splitst zinnen zonder getallen of afkortingen te breken', () => {
     assert.deepEqual(splitSentences('Het kost 1.000 euro. Dat is veel! Klopt dat? Ja.'), [
       'Het kost 1.000 euro.',
