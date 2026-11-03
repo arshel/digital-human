@@ -16,17 +16,16 @@ import type { Previous } from './prompt';
 //
 // Een algemene vraag ("Wat gebeurde er vandaag?", "Wat is er nog meer?") gaat over geen enkel
 // bericht. Die krijgt een kort overzicht van de nieuwste berichten. In de demo van 3 november 2026
-// gaf Nova op zo'n vraag het bericht in beeld nog een keer. Herkend vóór het taalmodel
-// (isOverviewQuestion), en anders kan de routeervraag het nog als overzicht aanwijzen.
+// gaf Nova op zo'n vraag het bericht in beeld nog een keer. Alleen herkend vóór het taalmodel
+// (isOverviewQuestion). Het taalmodel mag een vraag niet zelf tot algemene vraag verklaren: op
+// 3 november 2026 gaf dat bij "wat is het Congres" een overzicht van het Nederlandse nieuws.
+// Bij twijfel houdt Nova dus het antwoord uit het bericht in beeld.
 
 export const OTHER_STORY = 'Dat gaat over een ander bericht van vandaag.';
 export const FOREIGN_STORY = 'Dat gaat over buitenlands nieuws van vandaag.';
 export const NOT_FOUND = 'Ik vond het ook niet in het andere nieuws van vandaag.';
 
 export type Candidate = { id: string; title: string; opening: string };
-
-// Wat de routeervraag teruggeeft voor een algemene vraag over het nieuws.
-export const OVERVIEW = 'overzicht';
 
 // Woorden die in een algemene vraag over het nieuws voorkomen. Staat er een ander woord in
 // ("Wat gebeurde er vandaag met de boeren?"), dan gaat de vraag over een onderwerp.
@@ -104,7 +103,7 @@ type Answer = { spoken: string; mode: 'ai' | 'fallback'; aboutArticle?: boolean;
 export type QuestionDeps<A extends Answer> = {
   // De vraag beantwoorden uit één bericht.
   answer: (article: NewsArticle, previous: Previous[]) => Promise<A>;
-  // Over welk bericht gaat de vraag? Een id uit de lijst, OVERVIEW, of null.
+  // Over welk bericht gaat de vraag? Een id uit de lijst, of null.
   route: (candidates: Candidate[]) => Promise<{ id: string | null; attempts: unknown[] }>;
   // Een kort overzicht van het nieuws, voor een algemene vraag. Met een tijdvak in minuten als
   // de vraag daarom vroeg ("de afgelopen 10 minuten"), en Nederlands of buitenlands nieuws.
@@ -122,12 +121,10 @@ export function candidates(articles: NewsArticle[], currentId: string): Candidat
     .map((a) => ({ id: a.id, title: a.title, opening: a.body.replace(/\s+/g, ' ').slice(0, 110) }));
 }
 
-// Het antwoord van het model op de routeervraag: alleen een id die echt in de lijst staat, of
-// OVERVIEW.
+// Het antwoord van het model op de routeervraag: alleen een id die echt in de lijst staat.
 export function pickRoute(text: string, list: Candidate[]): string | null {
   try {
     const id = JSON.parse(text)?.id;
-    if (id === OVERVIEW) return OVERVIEW;
     return typeof id === 'string' && list.some((c) => c.id === id) ? id : null;
   } catch {
     return null;
@@ -159,7 +156,9 @@ export async function answerQuestion<A extends Answer>(
 
   const first = await deps.answer(current, previous);
   const stay = { article: current, answer: first, switchedFrom: null, overview: false };
-  if (first.mode !== 'ai' || (first.aboutArticle !== false && !saysNotAbout(first.spoken))) return stay;
+  // Een uitleg met "Ter uitleg:" beantwoordt de vraag al ("Wat is het Congres?"): niet verder zoeken.
+  if (first.mode !== 'ai' || /\bter uitleg:/i.test(first.spoken)) return stay;
+  if (first.aboutArticle !== false && !saysNotAbout(first.spoken)) return stay;
 
   const list = candidates(articles, current.id);
   if (!list.length) return stay;
@@ -169,14 +168,6 @@ export async function answerQuestion<A extends Answer>(
     return null;
   });
   if (!routed) return stay;
-  if (routed.id === OVERVIEW) {
-    const overview = await deps.overview(newsWindow(question), overviewRegion(question));
-    return {
-      ...stay,
-      answer: { ...overview, attempts: [...first.attempts, ...routed.attempts, ...overview.attempts] },
-      overview: true,
-    };
-  }
   const other = routed.id ? articles.find((a) => a.id === routed.id && a.id !== current.id) : undefined;
   if (!other) return { ...stay, answer: { ...first, spoken: `${first.spoken} ${NOT_FOUND}` } };
 

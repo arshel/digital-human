@@ -13,7 +13,6 @@ import {
   noRecentNews,
   NOT_FOUND,
   OTHER_STORY,
-  OVERVIEW,
   overviewStories,
   periodLabel,
   pickRoute,
@@ -144,13 +143,15 @@ describe('een algemene vraag over het nieuws', () => {
     assert.deepEqual(t.asked, ['overzicht']);
   });
 
-  it('niet herkend, maar de routeervraag ziet een algemene vraag: ook een overzicht', async () => {
-    const t = deps({ boetes: { aboutArticle: false } }, OVERVIEW);
-    const r = await answerQuestion(ARTICLES[0], 'Waar hebben ze het allemaal over?', [], ARTICLES, t.deps);
-    assert.equal(r.overview, true);
+  it('het taalmodel maakt van een vraag geen overzicht: bij twijfel het eerste antwoord', async () => {
+    // 3 november 2026: "wat is het Congres" op het Amerikaanse bericht gaf het Nederlandse overzicht.
+    const t = deps({ boetes: { aboutArticle: false, spoken: 'Ter uitleg: het Congres is het parlement.' } }, 'overzicht');
+    const r = await answerQuestion(ARTICLES[0], 'wat is het Congres', [], ARTICLES, t.deps);
+    assert.equal(r.overview, false);
     assert.equal(r.article.id, 'boetes');
-    assert.equal(r.answer.spoken, 'Dit is het nieuws.', 'geen "niet gevonden" erachter');
-    assert.deepEqual(r.answer.attempts, ['model-boetes', 'router', 'model-overzicht']);
+    assert.ok(!t.asked.includes('overzicht'), 'geen overzicht gevraagd');
+    assert.equal(r.answer.spoken, 'Ter uitleg: het Congres is het parlement.', 'geen "niet gevonden" erachter');
+    assert.equal(t.routed.length, 0, 'een uitleg beantwoordt de vraag al: niet verder zoeken');
   });
 
   it('het overzicht gaat over de eerste vijf Nederlandse berichten', () => {
@@ -283,7 +284,7 @@ describe('kiezen uit de berichten van vandaag', () => {
     assert.equal(pickRoute('{"id":"songfestival"}', list), 'songfestival');
     assert.equal(pickRoute('{"id":"boetes"}', list), null, 'het bericht in beeld zelf telt niet');
     assert.equal(pickRoute('{"id":null}', list), null);
-    assert.equal(pickRoute('{"id":"overzicht"}', list), OVERVIEW, 'een algemene vraag');
+    assert.equal(pickRoute('{"id":"overzicht"}', list), null, 'het model kiest geen overzicht');
     assert.equal(pickRoute('geen json', list), null);
   });
 });
