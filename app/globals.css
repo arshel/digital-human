@@ -385,6 +385,30 @@ html:has(dialog[open]) {
   letter-spacing: -0.06em;
   opacity: 0.6;
 }
+.story-art.has-image {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+}
+.story-art.has-image > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.story-art.has-image > span {
+  position: absolute;
+  left: 0.4rem;
+  bottom: 0.4rem;
+  padding: 0.15rem 0.35rem;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+  color: #fff;
+  background: #0c1527c0;
+  border-radius: 0.3rem;
+  opacity: 1;
+}
 .story-card:nth-child(3n + 2) .story-art {
   color: #546456;
   background: #e2e7dc;
@@ -1161,6 +1185,37 @@ html:has(dialog[open]) {
   line-height: 1.3;
   font-weight: 600;
 }
+/* De afbeelding van het bericht (uit de NOS-feed) naast de titel. */
+.stage-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.5rem 1.5rem;
+}
+.stage-head > .stage-title {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  padding: 0;
+}
+.stage-thumb {
+  flex: none;
+  width: 6rem;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 0.4rem;
+  background: #e0e8ec;
+}
+.source-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  margin-bottom: 0.75rem;
+}
 .stage-title::first-line {
   line-height: 1.3;
 }
@@ -1201,6 +1256,13 @@ html:has(dialog[open]) {
   display: none;
 }
 @media (max-width: 46rem) {
+  .stage-head {
+    padding: 0.4rem 0.75rem;
+    gap: 0.6rem;
+  }
+  .stage-thumb {
+    width: 4.5rem;
+  }
   .stage-title {
     padding: 0.4rem 0.75rem;
     font-size: 1rem;

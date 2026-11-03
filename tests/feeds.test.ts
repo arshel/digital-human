@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { DEFAULT_FEEDS, feedUrls, isNewsItem, mergeFeeds } from '../lib/feeds.ts';
+import { DEFAULT_FEEDS, feedImage, feedUrls, isNewsItem, mergeFeeds } from '../lib/feeds.ts';
 
 // Nederlands nieuws: welke feeds, en wat is een nieuwsbericht. Voorbeelden uit de NOS-feeds van
 // 30 oktober 2026.
@@ -43,5 +43,24 @@ describe('wat is een nieuwsbericht', () => {
     const b = { id: '2', sourceUrl: 'https://nos.nl/l/2', title: 'Podcast De Stemming: iets' };
     const c = { id: '3', sourceUrl: 'https://nos.nl/l/3', title: 'Ophokplicht voor pluimvee' };
     assert.deepEqual(mergeFeeds([[a, b], [a, c]]).map((x) => x.id), ['1', '3']);
+  });
+});
+
+describe('afbeelding bij een bericht', () => {
+  it('de enclosure uit de NOS-feed (3 november 2026)', () => {
+    const item = `<item><title>Stikstofwet</title>
+      <enclosure type="image/webp" url="https://images.cdn.nos.nl/8/9/5/N/X/3/11sQ1/8x187x3984x2241-1024x576.webp"/></item>`;
+    assert.equal(feedImage(item), 'https://images.cdn.nos.nl/8/9/5/N/X/3/11sQ1/8x187x3984x2241-1024x576.webp');
+  });
+
+  it('geen afbeelding, geen https of geen beeld: null', () => {
+    assert.equal(feedImage('<item><title>Zonder</title></item>'), null);
+    assert.equal(feedImage('<item><enclosure type="image/jpeg" url="http://example.com/a.jpg"/></item>'), null);
+    assert.equal(feedImage('<item><enclosure type="audio/mpeg" url="https://example.com/a.mp3"/></item>'), null);
+    assert.equal(feedImage('<item><enclosure type="image/jpeg" url="javascript:alert(1)"/></item>'), null);
+  });
+
+  it('&amp; in het adres wordt &', () => {
+    assert.equal(feedImage('<item><enclosure url="https://x.nl/a.jpg?w=1&amp;h=2" type="image/jpeg"/></item>'), 'https://x.nl/a.jpg?w=1&h=2');
   });
 });

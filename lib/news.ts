@@ -1,5 +1,5 @@
 import demoArticles from '@/data/articles.json';
-import { feedUrls, mergeFeeds } from './feeds';
+import { feedImage, feedUrls, mergeFeeds } from './feeds';
 
 export type Article = {
   id: string;
@@ -9,6 +9,8 @@ export type Article = {
   published: string;
   topic: string;
   body: string;
+  // De afbeelding bij het bericht (de enclosure in de NOS-feed), of null.
+  image: string | null;
 };
 
 export type StorySet = { stories: Article[]; live: boolean };
@@ -78,6 +80,7 @@ export function parseFeed(xml: string, source: string): Article[] {
       published: date.toISOString(),
       topic: plain(tag(item, 'category')) || 'Nieuws',
       body,
+      image: feedImage(item),
     }];
   });
 }
@@ -100,7 +103,7 @@ async function fetchPool(): Promise<Pool> {
   const pool = mergeFeeds(results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : [])));
   if (pool.length) return (news.cache = { at: Date.now(), ttl: CACHE_MS, pool, live: true });
   console.error('[news] geen bruikbare NOS-berichten, terugval op demo-artikelen');
-  return (news.cache = { at: Date.now(), ttl: FAILED_CACHE_MS, pool: demoArticles, live: false });
+  return (news.cache = { at: Date.now(), ttl: FAILED_CACHE_MS, pool: demoArticles.map((a) => ({ ...a, image: null })), live: false });
 }
 
 // Zoveel verhalen noemt de opening. De rest van de feed staat erachter, zodat je

@@ -34,3 +34,14 @@ export function mergeFeeds<T extends { id: string; sourceUrl: string; title: str
   }
   return merged;
 }
+
+// De afbeelding van een bericht: <enclosure type="image/webp" url="https://images.cdn.nos.nl/…"/>.
+// Alleen een https-adres van een afbeelding, anders null.
+export function feedImage(item: string): string | null {
+  for (const [el] of item.matchAll(/<(?:enclosure|media:content)\b[^>]*>/g)) {
+    const type = el.match(/\btype="([^"]*)"/)?.[1] ?? '';
+    const url = (el.match(/\burl="([^"]*)"/)?.[1] ?? '').replace(/&amp;/g, '&');
+    if ((!type || type.startsWith('image/')) && /^https:\/\/[^\s"'<>]+$/.test(url)) return url;
+  }
+  return null;
+}

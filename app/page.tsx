@@ -544,7 +544,14 @@ export default function Page() {
 
       <main className={`layout${started ? " is-started" : ""}`}>
         <section className="stage" aria-label="Presentator">
-          {article && <h1 className="stage-title">{article.shortTitle}</h1>}
+          {article && (
+            <div className="stage-head">
+              {article.image && (
+                <img className="stage-thumb" src={article.image} alt="" referrerPolicy="no-referrer" />
+              )}
+              <h1 className="stage-title">{article.shortTitle}</h1>
+            </div>
+          )}
           <div className="frame">
             <PresenterBackdrop poster={config?.poster ?? null} />
             {showVideo && (
@@ -911,8 +918,15 @@ export default function Page() {
                 aria-current={i === index ? "true" : undefined}
                 onClick={() => selectArticle(i)}
               >
-                <span className="story-art" aria-hidden="true">
-                  <NewsIcon />
+                <span
+                  className={`story-art${item.image ? " has-image" : ""}`}
+                  aria-hidden="true"
+                >
+                  {item.image ? (
+                    <img src={item.image} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                  ) : (
+                    <NewsIcon />
+                  )}
                   <span>{String(i + 1).padStart(2, "0")}</span>
                 </span>
                 <span className="story-publisher">
@@ -1033,6 +1047,9 @@ export default function Page() {
       <Panel open={panel === "source"} onClose={close} title="Bron">
         {article && (
           <div className="source">
+            {article.image && (
+              <img className="source-image" src={article.image} alt="" referrerPolicy="no-referrer" />
+            )}
             <p>
               <strong>{article.title}</strong>
             </p>

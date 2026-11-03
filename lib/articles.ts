@@ -19,6 +19,8 @@ export type NewsArticle = {
   updated: string | null;
   retrieved: string | null;
   body: string;
+  // Afbeelding uit de feed, alleen voor in beeld. Gaat niet naar het taalmodel.
+  image: string | null;
   // Redactionele hulpnotities, alleen in de testselectie. Bij verschil geldt de brontekst.
   keyFacts: string[];
   conditions: string[];
@@ -29,7 +31,7 @@ export type NewsArticle = {
 
 export type ArticleMeta = Pick<
   NewsArticle,
-  'id' | 'shortTitle' | 'title' | 'publisher' | 'url' | 'published' | 'updated' | 'version'
+  'id' | 'shortTitle' | 'title' | 'publisher' | 'url' | 'published' | 'updated' | 'version' | 'image'
 >;
 
 export type NewsMode = 'test' | 'live';
@@ -45,11 +47,13 @@ function versioned(a: Draft): NewsArticle {
   return { ...a, version: hash.slice(0, 12) };
 }
 
-const TEST_ARTICLES: NewsArticle[] = (testSet.articles as Draft[]).map(versioned);
+// Een afbeelding is optioneel in de testselectie: zet er "image": "https://…" bij als je die wilt tonen.
+type TestDraft = Omit<Draft, 'image'> & { image?: string | null };
+const TEST_ARTICLES: NewsArticle[] = (testSet.articles as TestDraft[]).map((a) => versioned({ ...a, image: a.image ?? null }));
 
 export function meta(a: NewsArticle): ArticleMeta {
-  const { id, shortTitle, title, publisher, url, published, updated, version } = a;
-  return { id, shortTitle, title, publisher, url, published, updated, version };
+  const { id, shortTitle, title, publisher, url, published, updated, version, image } = a;
+  return { id, shortTitle, title, publisher, url, published, updated, version, image };
 }
 
 // live is false als de NOS-feed niet bereikbaar was: dan zijn het de verzonnen demo-artikelen
@@ -71,6 +75,7 @@ export async function getArticles(): Promise<{ articles: NewsArticle[]; live: bo
         updated: null,
         retrieved: null,
         body: s.body,
+        image: s.image,
         keyFacts: [],
         conditions: [],
         uncertainties: [],

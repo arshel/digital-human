@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { after } from 'next/server';
-import { aiProviders, generateExplanation, routeQuestion, type Explanation } from '@/lib/ai';
+import { aiProviders, generateExplanation, generateOverview, routeQuestion, type Explanation } from '@/lib/ai';
 import { findArticle, getArticles } from '@/lib/articles';
 import { asForeground, coreExplanation, warmWhenQuiet, type CacheState } from '@/lib/corecache';
 import { DEV_TOOLS } from '@/lib/config';
 import { PROMPT_VERSION } from '@/lib/prompt';
-import { answerQuestion } from '@/lib/questions';
+import { answerQuestion, overviewStories } from '@/lib/questions';
 import { rateLimited, tooMany } from '@/lib/ratelimit';
 import { splitSentences } from '@/lib/spoken';
 import { logLine } from '@/lib/testlog';
@@ -39,6 +39,8 @@ export async function POST(req: Request) {
   // `answered` is dan dat bericht, en daar horen bron, datum en versie van het antwoord bij.
   let answered = article;
   let switchedFrom: string | null = null;
+  // Een algemene vraag ("Wat gebeurde er vandaag?"): een overzicht van de nieuwste berichten.
+  let overview = false;
   const answer = await asForeground<Explanation & { cache: CacheState | 'none' }>(async () => {
     if (isCore) return coreExplanation(article, cacheKey, makeCore);
     const ask = (target: typeof article, previous: typeof valid.previous) =>
@@ -53,12 +55,14 @@ export async function POST(req: Request) {
       return { ...(await ask(article, valid.previous)), cache: 'none' as const };
     }
     const { articles } = await getArticles();
-    const result = await answerQuestion(article, valid.previous, articles, {
+    const result = await answerQuestion(article, valid.question, valid.previous, articles, {
       answer: ask,
       route: (list) => routeQuestion(valid.question!, list),
+      overview: () => generateOverview(overviewStories(articles), valid.question!),
     });
     answered = result.article;
     switchedFrom = result.switchedFrom;
+    overview = result.overview;
     return { ...result.answer, cache: 'none' as const };
   });
   const generateMs = Date.now() - generateStart;
@@ -83,6 +87,7 @@ export async function POST(req: Request) {
     articleId: answered.id,
     articleVersion: answered.version,
     switchedFrom,
+    overview,
     promptVersion: answer.promptVersion,
     action: valid.action,
     mode: answer.mode,
@@ -103,6 +108,8 @@ export async function POST(req: Request) {
     articleVersion: answered.version,
     // Ging de vraag over een ander bericht van vandaag, dan staat hier het bericht in beeld.
     switchedFrom,
+    // Een overzicht van het nieuws in plaats van een antwoord uit dit bericht.
+    overview,
     promptVersion: answer.promptVersion,
     mode: answer.mode,
     spoken: answer.spoken,

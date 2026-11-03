@@ -98,7 +98,7 @@ Anam rekent per minuut sessie. In de ontwikkelmodus wordt Anam niet aangeroepen;
 
 ## Taal en journalistiek
 
-De regels staan in `SYSTEM` in [lib/prompt.ts](lib/prompt.ts), gegroepeerd als rol, taal, opbouw, gesprek, journalistieke zorgvuldigheid, presentatie, veiligheid en antwoordformaat. Verander je de inhoud, verhoog dan `PROMPT_VERSION`. De opdracht per knop staat in `TASKS`. De basisuitleg is 60 tot 90 woorden: een instelbaar startpunt (`NOVA_CORE_WORDS`), geen onderzoeksuitkomst.
+De regels staan in `SYSTEM` in [lib/prompt.ts](lib/prompt.ts), gegroepeerd als rol, taal, opbouw, gesprek, journalistieke zorgvuldigheid, presentatie, veiligheid en antwoordformaat. Verander je de inhoud, verhoog dan `PROMPT_VERSION`. De opdracht per knop staat in `TASKS`. De basisuitleg is 35 tot 50 woorden (was 60 tot 90; dat voelde in de demo te lang): een instelbaar startpunt (`NOVA_CORE_WORDS`), geen onderzoeksuitkomst. Een algemene vraag als "Wat gebeurde er vandaag?" krijgt een kort overzicht van de nieuwste berichten (`OVERVIEW_SYSTEM`, zie [lib/questions.ts](lib/questions.ts)).
 
 Valt het taalmodel weg (geen sleutel, quotum, time-out), dan kiest de terugval in [lib/fallback.ts](lib/fallback.ts) zinnen uit de bron. Ze verzint niets, maar herschrijft ook niet. De interface meldt het dan: "De AI werkt nu niet".
 

@@ -4,7 +4,17 @@ import * as gemini from './gemini';
 import * as groq from './groq';
 import * as mistral from './mistral';
 import * as openai from './openai';
-import { buildPrompt, buildRoutePrompt, PROMPT_VERSION, ROUTE_SYSTEM, SYSTEM, type Action, type Previous } from './prompt';
+import {
+  buildOverviewPrompt,
+  buildPrompt,
+  buildRoutePrompt,
+  OVERVIEW_SYSTEM,
+  PROMPT_VERSION,
+  ROUTE_SYSTEM,
+  SYSTEM,
+  type Action,
+  type Previous,
+} from './prompt';
 import { pickRoute, type Candidate } from './questions';
 import { cleanSpoken } from './spoken';
 import { pickHardWords, type HardWord } from './words';
@@ -98,4 +108,40 @@ export async function routeQuestion(question: string, list: Candidate[]) {
   const attempts: gemini.Attempt[] = [];
   const { text } = await generateJson(ROUTE_SYSTEM, [{ role: 'user', content: buildRoutePrompt(question, list) }], attempts);
   return { id: pickRoute(text, list), attempts };
+}
+
+// Een kort overzicht van de nieuwste berichten, voor een algemene vraag als "Wat gebeurde er
+// vandaag?" (lib/questions.ts). Alleen uit titels en het begin van de tekst. Lukt het taalmodel
+// niet, dan de titels zelf: die komen letterlijk uit de bron.
+export async function generateOverview(stories: NewsArticle[], question: string): Promise<Explanation> {
+  const attempts: gemini.Attempt[] = [];
+  const list = stories.map((a) => ({
+    title: a.title,
+    publisher: a.publisher,
+    opening: a.body.replace(/\s+/g, ' ').slice(0, 200),
+  }));
+  try {
+    const { text, model } = await generateJson(OVERVIEW_SYSTEM, [{ role: 'user', content: buildOverviewPrompt(list, question) }], attempts);
+    const parsed = JSON.parse(text);
+    const spoken = typeof parsed.spoken === 'string' ? cleanSpoken(parsed.spoken) : '';
+    if (!spoken) throw new Error(`Onbruikbaar overzicht: ${text.slice(0, 200)}`);
+    return { spoken, mode: 'ai', model, promptVersion: PROMPT_VERSION, attempts, words: pickHardWords(parsed.woorden, spoken, cleanSpoken) };
+  } catch (err) {
+    console.error('[ai] overzicht zonder taalmodel:', err instanceof Error ? err.message : err);
+    return {
+      spoken: cleanSpoken(fallbackOverview(stories)),
+      mode: 'fallback',
+      model: null,
+      promptVersion: PROMPT_VERSION,
+      attempts,
+      words: [],
+    };
+  }
+}
+
+export function fallbackOverview(stories: NewsArticle[]) {
+  if (!stories.length) return 'Er is nu geen ander nieuws.';
+  const publisher = stories[0].publisher;
+  const titles = stories.map((a) => (/[.!?]$/.test(a.title) ? a.title : `${a.title}.`));
+  return `Dit zijn de nieuwste berichten van de ${publisher}. ${titles.join(' ')} Vraag gerust meer over een van deze berichten.`;
 }
