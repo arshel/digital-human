@@ -592,14 +592,7 @@ export default function Page() {
 
       <main className={`layout${started ? " is-started" : ""}`}>
         <section className="stage" aria-label="Presentator">
-          {article && (
-            <div className="stage-head">
-              {article.image && (
-                <img className="stage-thumb" src={article.image} alt="" referrerPolicy="no-referrer" />
-              )}
-              <h1 className="stage-title">{article.shortTitle}</h1>
-            </div>
-          )}
+          {article && <h1 className="stage-title">{article.shortTitle}</h1>}
           <div className="frame">
             <PresenterBackdrop poster={config?.poster ?? null} />
             {showVideo && (
@@ -649,6 +642,14 @@ export default function Page() {
             </p>
             {config?.avatarMode === "simulated" && (
               <p className="sim-label">Gesimuleerde preview</p>
+            )}
+            {/* De afbeelding van het bericht schuin boven Nova's schouder, zoals bij het journaal.
+                Een nieuw bericht (key) laat de afbeelding opnieuw invloeien. */}
+            {article?.image && (
+              <figure key={article.id} className="frame-ots" aria-hidden="true">
+                <img src={article.image} alt="" referrerPolicy="no-referrer" />
+                <figcaption>{article.publisher}</figcaption>
+              </figure>
             )}
           </div>
           {fragment && captions && (!timedCaptions || activeSentence) && (
