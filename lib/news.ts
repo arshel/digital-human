@@ -18,12 +18,15 @@ export type StorySet = { stories: Article[]; live: boolean };
 // Nederlands nieuws: NOS Binnenland en Politiek (zie lib/feeds.ts; instelbaar met NEWS_FEEDS).
 const FEEDS = feedUrls(process.env.NEWS_FEEDS);
 const FEED_SOURCE = 'NOS';
-const CACHE_MS = 15 * 60 * 1000;
+// De NOS-feed zelf is tot 60 seconden oud (cache-control: max-age=60). Vaker ophalen heeft dus geen
+// zin; minder vaak maakt vragen als "wat is er de afgelopen 10 minuten gebeurd?" onbetrouwbaar.
+const CACHE_MS = 60 * 1000;
 const FAILED_CACHE_MS = 60 * 1000;
 const MAX_BODY = 6000;
 
-// Alleen server-side: haalt de NOS-feeds op en houdt ze 15 minuten vast, zodat de verhalen niet
-// midden in een gesprek verschuiven. Mislukken alle feeds, dan de demo-artikelen.
+// Alleen server-side: haalt de NOS-feeds op en houdt ze een minuut vast. De pagina houdt het
+// bericht in beeld vast op id, dus nieuwe berichten verschuiven een lopend gesprek niet.
+// Mislukken alle feeds, dan de demo-artikelen.
 // Op globalThis en met één lopende verversing: in de ontwikkelserver heeft elke route een eigen
 // kopie van deze module, en /api/news en /api/explain moeten dezelfde berichten zien.
 type Pool = { at: number; ttl: number; pool: Article[]; live: boolean };

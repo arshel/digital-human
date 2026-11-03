@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { after } from 'next/server';
-import { aiProviders, generateExplanation, generateOverview, routeQuestion, type Explanation } from '@/lib/ai';
+import { aiProviders, generateExplanation, generateOverview, generateRecentOverview, routeQuestion, type Explanation } from '@/lib/ai';
 import { findArticle, getArticles } from '@/lib/articles';
 import { asForeground, coreExplanation, warmWhenQuiet, type CacheState } from '@/lib/corecache';
 import { DEV_TOOLS } from '@/lib/config';
@@ -58,7 +58,10 @@ export async function POST(req: Request) {
     const result = await answerQuestion(article, valid.question, valid.previous, articles, {
       answer: ask,
       route: (list) => routeQuestion(valid.question!, list),
-      overview: () => generateOverview(overviewStories(articles), valid.question!),
+      overview: (minutes) =>
+        minutes
+          ? generateRecentOverview(articles, minutes, valid.question!)
+          : generateOverview(overviewStories(articles), valid.question!),
     });
     answered = result.article;
     switchedFrom = result.switchedFrom;

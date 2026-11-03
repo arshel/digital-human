@@ -177,6 +177,9 @@ export default function Page() {
 
   const articles = config?.articles ?? [];
   const article = articles[index] ?? null;
+  // Voor het verversen van de lijst (refreshArticles): welk bericht nu in beeld is.
+  const shown = useRef({ article, index, started });
+  shown.current = { article, index, started };
   const speaking =
     presenter.state === "speaking" || presenter.state === "loading";
   const paused = presenter.canResume;
@@ -189,6 +192,45 @@ export default function Page() {
       .then(setConfig)
       .catch(() => setLoadFailed(true));
   }, []);
+
+  // Nieuwe berichten ophalen zonder het bericht in beeld kwijt te raken: dat blijft staan (op id),
+  // ook als het intussen uit de feed is. Vóór Start, zolang er niets gekozen is, gewoon de nieuwe
+  // opening. Mislukt het of komt er niets, dan blijft de oude lijst.
+  const refreshArticles = useCallback(async (): Promise<ArticleMeta[] | null> => {
+    const data = await fetch("/api/news")
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    const fresh: ArticleMeta[] | undefined = data?.articles;
+    if (!fresh?.length) return null;
+    const { article: current, index: currentIndex, started: isStarted } = shown.current;
+    let list = fresh;
+    let nextIndex = 0;
+    if (current && (isStarted || currentIndex !== 0)) {
+      nextIndex = list.findIndex((a) => a.id === current.id);
+      if (nextIndex < 0) {
+        list = [current, ...list];
+        nextIndex = 0;
+      }
+    }
+    setConfig((prev) => (prev ? { ...prev, articles: list } : prev));
+    setIndex(nextIndex);
+    return list;
+  }, []);
+
+  // Elke minuut, zolang het tabblad zichtbaar is, en meteen als je terugkomt. De server haalt de
+  // NOS-feed ook hooguit eens per minuut op (lib/news.ts).
+  useEffect(() => {
+    if (!config) return;
+    const tick = () => {
+      if (document.visibilityState === "visible") refreshArticles();
+    };
+    const timer = window.setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [config !== null, refreshArticles]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadConfig();
@@ -276,10 +318,16 @@ export default function Page() {
       // en 'Bekijk bron' bij het antwoord horen. In alle andere gevallen nooit afspelen.
       let context = previous;
       if (data.articleId !== target.id) {
-        const other =
+        let other =
           data.switchedFrom === target.id
             ? articles.findIndex((a) => a.id === data.articleId)
             : -1;
+        // Een bericht dat de server al kent en deze pagina nog niet: eerst de lijst verversen.
+        if (other < 0 && data.switchedFrom === target.id) {
+          const fresh = await refreshArticles();
+          if (mine !== seq.current) return;
+          other = fresh ? fresh.findIndex((a) => a.id === data.articleId) : -1;
+        }
         if (other < 0) {
           setProblem({
             message: "Dit gaat over een bericht dat hier niet meer staat.",

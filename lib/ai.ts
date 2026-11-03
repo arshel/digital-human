@@ -15,7 +15,7 @@ import {
   type Action,
   type Previous,
 } from './prompt';
-import { pickRoute, type Candidate } from './questions';
+import { clock, noRecentNews, periodLabel, pickRoute, recentStories, sentence, type Candidate } from './questions';
 import { cleanSpoken } from './spoken';
 import { pickHardWords, type HardWord } from './words';
 
@@ -113,15 +113,16 @@ export async function routeQuestion(question: string, list: Candidate[]) {
 // Een kort overzicht van de nieuwste berichten, voor een algemene vraag als "Wat gebeurde er
 // vandaag?" (lib/questions.ts). Alleen uit titels en het begin van de tekst. Lukt het taalmodel
 // niet, dan de titels zelf: die komen letterlijk uit de bron.
-export async function generateOverview(stories: NewsArticle[], question: string): Promise<Explanation> {
+export async function generateOverview(stories: NewsArticle[], question: string, period?: string): Promise<Explanation> {
   const attempts: gemini.Attempt[] = [];
   const list = stories.map((a) => ({
     title: a.title,
     publisher: a.publisher,
     opening: a.body.replace(/\s+/g, ' ').slice(0, 200),
+    time: period ? clock(a.published) : undefined,
   }));
   try {
-    const { text, model } = await generateJson(OVERVIEW_SYSTEM, [{ role: 'user', content: buildOverviewPrompt(list, question) }], attempts);
+    const { text, model } = await generateJson(OVERVIEW_SYSTEM, [{ role: 'user', content: buildOverviewPrompt(list, question, period) }], attempts);
     const parsed = JSON.parse(text);
     const spoken = typeof parsed.spoken === 'string' ? cleanSpoken(parsed.spoken) : '';
     if (!spoken) throw new Error(`Onbruikbaar overzicht: ${text.slice(0, 200)}`);
@@ -129,7 +130,7 @@ export async function generateOverview(stories: NewsArticle[], question: string)
   } catch (err) {
     console.error('[ai] overzicht zonder taalmodel:', err instanceof Error ? err.message : err);
     return {
-      spoken: cleanSpoken(fallbackOverview(stories)),
+      spoken: cleanSpoken(fallbackOverview(stories, period)),
       mode: 'fallback',
       model: null,
       promptVersion: PROMPT_VERSION,
@@ -139,9 +140,29 @@ export async function generateOverview(stories: NewsArticle[], question: string)
   }
 }
 
-export function fallbackOverview(stories: NewsArticle[]) {
+export function fallbackOverview(stories: NewsArticle[], period?: string) {
   if (!stories.length) return 'Er is nu geen ander nieuws.';
   const publisher = stories[0].publisher;
-  const titles = stories.map((a) => (/[.!?]$/.test(a.title) ? a.title : `${a.title}.`));
-  return `Dit zijn de nieuwste berichten van de ${publisher}. ${titles.join(' ')} Vraag gerust meer over een van deze berichten.`;
+  const titles = stories.map((a) => (period ? `Om ${clock(a.published)} uur: ${sentence(a.title)}` : sentence(a.title)));
+  const intro = period ? `Dit is het nieuws van de ${publisher} van ${period}.` : `Dit zijn de nieuwste berichten van de ${publisher}.`;
+  return `${intro} ${titles.join(' ')} Vraag gerust meer over een van deze berichten.`;
+}
+
+// "Wat is er de afgelopen 10 minuten gebeurd?": alleen berichten uit die tijd. Is er niets, dan
+// zegt Nova dat, en wat het nieuwste bericht is en hoe laat het kwam. Dat zijn vaste zinnen en
+// letterlijk de titel: geen taalmodel nodig.
+export async function generateRecentOverview(
+  articles: NewsArticle[],
+  minutes: number,
+  question: string,
+  now = Date.now(),
+): Promise<Explanation> {
+  const period = periodLabel(minutes);
+  const recent = recentStories(articles, minutes, now);
+  if (recent.length) return generateOverview(recent, question, period);
+
+  const spoken = noRecentNews(articles, period);
+  // mode 'ai': dit is een volledig antwoord, dus geen terugvalmelding in beeld. model null laat in
+  // het testlog zien dat er geen taalmodel aan te pas kwam.
+  return { spoken: cleanSpoken(spoken), mode: 'ai', model: null, promptVersion: PROMPT_VERSION, attempts: [], words: [] } satisfies Explanation;
 }

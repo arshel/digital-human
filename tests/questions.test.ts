@@ -4,12 +4,17 @@ import type { NewsArticle } from '../lib/articles.ts';
 import {
   answerQuestion,
   candidates,
+  clock,
   isOverviewQuestion,
+  newsWindow,
+  noRecentNews,
   NOT_FOUND,
   OTHER_STORY,
   OVERVIEW,
   overviewStories,
+  periodLabel,
   pickRoute,
+  recentStories,
   type Candidate,
 } from '../lib/questions.ts';
 
@@ -28,8 +33,8 @@ function deps(answers: Record<string, Partial<A>>, routeTo: string | null | 'err
     asked,
     routed,
     deps: {
-      overview: async () => {
-        asked.push('overzicht');
+      overview: async (minutes: number | null) => {
+        asked.push(minutes ? `overzicht:${minutes}` : 'overzicht');
         return { spoken: 'Dit is het nieuws.', mode: 'ai' as const, attempts: ['model-overzicht'] };
       },
       answer: async (article: NewsArticle, previous: unknown[]) => {
@@ -146,6 +151,63 @@ describe('een algemene vraag over het nieuws', () => {
 
   it('het overzicht gaat over de eerste vijf berichten', () => {
     assert.deepEqual(overviewStories([1, 2, 3, 4, 5, 6, 7]), [1, 2, 3, 4, 5]);
+  });
+});
+
+describe('het nieuws van de afgelopen minuten', () => {
+  it('leest het tijdvak uit de vraag', () => {
+    const cases: [string, number | null][] = [
+      ['Wat is er de afgelopen 10 minuten gebeurd?', 10],
+      ['wat is er de afgelopen tien minuten gebeurd', 10],
+      ['Wat is er het afgelopen kwartier gebeurd?', 15],
+      ['Nieuws van het laatste half uur?', 30],
+      ['Wat is er het afgelopen uur gebeurd?', 60],
+      ['Wat gebeurde er de laatste 2 uur?', 120],
+      ['Wat is er de afgelopen paar minuten gebeurd?', 10],
+      ['Wat is er de afgelopen minuut gebeurd?', 1],
+      ['Wat is het laatste nieuws?', null],
+      ['Wat gebeurde er vandaag?', null],
+      ['De afgelopen 900 uur', 24 * 60],
+    ];
+    for (const [q, minutes] of cases) assert.equal(newsWindow(q), minutes, q);
+  });
+
+  it('een tijdvak maakt het een vraag over het nieuws, maar een onderwerp niet', () => {
+    assert.equal(isOverviewQuestion('Wat is er de afgelopen 10 minuten gebeurd?'), true);
+    assert.equal(isOverviewQuestion('Wat is er het laatste uur gebeurd in Nederland?'), true);
+    assert.equal(isOverviewQuestion('Wat is er de afgelopen 10 minuten met de boeren gebeurd?'), false);
+  });
+
+  it('geeft het tijdvak door aan het overzicht', async () => {
+    const t = deps({}, null);
+    await answerQuestion(ARTICLES[0], 'Wat is er de afgelopen 10 minuten gebeurd in het nieuws?', [], ARTICLES, t.deps);
+    assert.deepEqual(t.asked, ['overzicht:10']);
+  });
+
+  const now = Date.parse('2026-11-03T14:40:00Z');
+  const at = (id: string, minutesAgo: number) => ({
+    id,
+    title: `Bericht ${id}`,
+    publisher: 'NOS',
+    published: new Date(now - minutesAgo * 60_000).toISOString(),
+  });
+  const list = [at('oud', 45), at('net', 2), at('kwartier', 14), at('vijf', 5)];
+
+  it('alleen berichten uit het tijdvak, nieuwste eerst', () => {
+    assert.deepEqual(recentStories(list, 10, now).map((a) => a.id), ['net', 'vijf']);
+    assert.deepEqual(recentStories(list, 15, now).map((a) => a.id), ['net', 'vijf', 'kwartier']);
+    assert.deepEqual(recentStories(list, 1, now), []);
+  });
+
+  it('niets nieuws: eerlijk zeggen, met het nieuwste bericht en de tijd', () => {
+    assert.equal(clock('2026-11-03T14:38:00Z'), '15.38', 'Nederlandse tijd, met een punt');
+    assert.equal(
+      noRecentNews(list, periodLabel(1)),
+      'In de afgelopen minuut is er geen nieuw bericht van de NOS gekomen. Het nieuwste bericht kwam om 15.38 uur: Bericht net.',
+    );
+    assert.equal(periodLabel(10), 'de afgelopen 10 minuten');
+    assert.equal(periodLabel(60), 'het afgelopen uur');
+    assert.equal(periodLabel(120), 'de afgelopen 2 uur');
   });
 });
 

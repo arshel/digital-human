@@ -34,18 +34,48 @@ const OVERVIEW_WORDS = new Set(
   nieuws nieuwtjes berichten onderwerpen overzicht hoofdpunten koppen
   gebeurd gebeurde gebeurt gebeuren gaande speelt
   vertel geef noem me mij ons kun kan je jij u eens even dan en dus oké ok oke nou hé he hoi nova eigenlijk
-  nederland binnenland politiek`.split(/\s+/),
+  nederland binnenland politiek
+  afgelopen voorbije vorige minuut minuten kwartier uur uren half halve paar binnengekomen nieuw nieuwe
+  één twee drie vier vijf tien vijftien twintig dertig veertig vijftig zestig`.split(/\s+/),
 );
+
+// Een tijdvak in de vraag, in minuten: "de afgelopen 10 minuten", "het laatste half uur",
+// "het afgelopen kwartier", "de laatste 2 uur". Geen tijdvak: null.
+const COUNT: Record<string, number> = {
+  een: 1, één: 1, twee: 2, drie: 3, vier: 4, vijf: 5, tien: 10, vijftien: 15, twintig: 20,
+  dertig: 30, veertig: 40, vijftig: 50, zestig: 60, paar: 3, half: 0.5, halve: 0.5,
+};
+const WINDOW = /\b(?:afgelopen|laatste|voorbije|vorige)\s+(?:(\d+|[a-zé]+)\s+)?(minuut|minuten|kwartier|uur|uren)\b/;
+const MAX_WINDOW = 24 * 60;
+
+export function newsWindow(question: string): number | null {
+  const m = question.toLowerCase().match(WINDOW);
+  if (!m) return null;
+  const [, amount, unit] = m;
+  const n = amount === undefined ? 1 : /^\d+$/.test(amount) ? Number(amount) : COUNT[amount];
+  if (!n) return null;
+  const per = unit.startsWith('minu') ? (amount === 'paar' ? 10 / 3 : 1) : unit === 'kwartier' ? 15 : 60;
+  return Math.min(MAX_WINDOW, Math.max(1, Math.round(n * per)));
+}
+
+// Berichten uit het tijdvak, nieuwste eerst.
+export function recentStories<T extends { published: string }>(articles: T[], minutes: number, now = Date.now()): T[] {
+  const since = now - minutes * 60 * 1000;
+  return articles
+    .filter((a) => Date.parse(a.published) >= since)
+    .sort((a, b) => b.published.localeCompare(a.published))
+    .slice(0, OVERVIEW_COUNT);
+}
 // Een van deze woorden maakt het een vraag over het nieuws. "meer", "verder" en "anders" alleen
 // met "wat ... er": "Wat is er nog meer?" wel, "Vertel me meer" (over dit bericht) niet.
 const OVERVIEW_TOPIC = /\b(vandaag|nieuws|nieuwtjes|berichten|onderwerpen|overzicht|hoofdpunten|koppen)\b/;
 const OVERVIEW_MORE = /\b(meer|verder|anders|andere?)\b/;
 
 export function isOverviewQuestion(question: string) {
-  const text = question.toLowerCase().replace(/[^a-zà-ÿ\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const text = question.toLowerCase().replace(/[^a-zà-ÿ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
   const words = text.split(' ').filter(Boolean);
-  if (!words.length || !words.every((w) => OVERVIEW_WORDS.has(w))) return false;
-  if (OVERVIEW_TOPIC.test(text)) return true;
+  if (!words.length || !words.every((w) => OVERVIEW_WORDS.has(w) || /^\d+$/.test(w))) return false;
+  if (OVERVIEW_TOPIC.test(text) || newsWindow(text) !== null) return true;
   return OVERVIEW_MORE.test(text) && words.includes('wat') && words.includes('er');
 }
 
@@ -63,8 +93,9 @@ export type QuestionDeps<A extends Answer> = {
   answer: (article: NewsArticle, previous: Previous[]) => Promise<A>;
   // Over welk bericht gaat de vraag? Een id uit de lijst, OVERVIEW, of null.
   route: (candidates: Candidate[]) => Promise<{ id: string | null; attempts: unknown[] }>;
-  // Een kort overzicht van het nieuws, voor een algemene vraag.
-  overview: () => Promise<A>;
+  // Een kort overzicht van het nieuws, voor een algemene vraag. Met een tijdvak in minuten als
+  // de vraag daarom vroeg ("de afgelopen 10 minuten").
+  overview: (minutes: number | null) => Promise<A>;
 };
 
 // Alle berichten van vandaag (Binnenland en Politiek samen zijn er zo'n 40), elk kort: titel en
@@ -98,7 +129,9 @@ export async function answerQuestion<A extends Answer>(
   deps: QuestionDeps<A>,
 ): Promise<{ article: NewsArticle; answer: A; switchedFrom: string | null; overview: boolean }> {
   // Het bericht in beeld blijft staan: het overzicht hoort bij geen enkel bericht in het bijzonder.
-  if (isOverviewQuestion(question)) return { article: current, answer: await deps.overview(), switchedFrom: null, overview: true };
+  if (isOverviewQuestion(question)) {
+    return { article: current, answer: await deps.overview(newsWindow(question)), switchedFrom: null, overview: true };
+  }
 
   const first = await deps.answer(current, previous);
   const stay = { article: current, answer: first, switchedFrom: null, overview: false };
@@ -109,7 +142,7 @@ export async function answerQuestion<A extends Answer>(
   const routed = await deps.route(list).catch(() => null);
   if (!routed) return stay;
   if (routed.id === OVERVIEW) {
-    const overview = await deps.overview();
+    const overview = await deps.overview(newsWindow(question));
     return {
       ...stay,
       answer: { ...overview, attempts: [...first.attempts, ...routed.attempts, ...overview.attempts] },
@@ -132,4 +165,33 @@ export async function answerQuestion<A extends Answer>(
     switchedFrom: current.id,
     overview: false,
   };
+}
+
+// ---------- het nieuws van een tijdvak ----------
+
+export function sentence(title: string) {
+  return /[.!?]$/.test(title) ? title : `${title}.`;
+}
+
+// "14.32", in Nederlandse tijd: zo leest de stem het als een tijd.
+export function clock(iso: string) {
+  return new Date(iso)
+    .toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam', hour: '2-digit', minute: '2-digit' })
+    .replace(':', '.');
+}
+
+// "de afgelopen 10 minuten", "het afgelopen uur", "de afgelopen 2 uur".
+export function periodLabel(minutes: number) {
+  if (minutes === 60) return 'het afgelopen uur';
+  if (minutes % 60 === 0) return `de afgelopen ${minutes / 60} uur`;
+  if (minutes === 1) return 'de afgelopen minuut';
+  return `de afgelopen ${minutes} minuten`;
+}
+
+// Niets nieuws in het tijdvak: dat eerlijk zeggen, plus het nieuwste bericht en hoe laat het kwam.
+// Vaste zinnen en letterlijk de titel, dus zonder taalmodel.
+export function noRecentNews(articles: { title: string; publisher: string; published: string }[], period: string) {
+  const latest = [...articles].sort((a, b) => b.published.localeCompare(a.published))[0];
+  if (!latest) return `In ${period} is er geen nieuw bericht gekomen.`;
+  return `In ${period} is er geen nieuw bericht van de ${latest.publisher} gekomen. Het nieuwste bericht kwam om ${clock(latest.published)} uur: ${sentence(latest.title)}`;
 }
