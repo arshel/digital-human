@@ -8,6 +8,7 @@ import {
   inRegion,
   overviewRegion,
   clock,
+  isGenericTopic,
   isOverviewQuestion,
   newsWindow,
   noRecentNews,
@@ -92,6 +93,16 @@ describe('vraag over ander nieuws van vandaag', () => {
     assert.equal(r.answer.spoken, noNews('de boetes'));
   });
 
+  it('het onderwerp is gewoon "nieuws": een overzicht, niet "geen nieuws over nieuws"', async () => {
+    const t = deps({ boetes: { aboutArticle: false } }, null);
+    t.deps.route = async () => ({ id: null, topic: 'nieuws', attempts: ['router'] });
+    const r = await answerQuestion(ARTICLES[0], 'En waar heb jij dan wel berichten over?', [], ARTICLES, t.deps);
+    assert.equal(r.overview, true);
+    assert.equal(r.answer.spoken, 'Dit is het nieuws.');
+    for (const topic of ['nieuws', 'het nieuws', 'ander nieuws', 'berichten']) assert.equal(isGenericTopic(topic), true, topic);
+    for (const topic of ['Gaza', 'de stikstofwet', null]) assert.equal(isGenericTopic(topic), false, String(topic));
+  });
+
   it('zoeken lukt niet (minuutlimiet, of geen taalmodel voor het andere bericht): dat eerlijk zeggen', async () => {
     for (const [answers, routeTo] of [
       [{ boetes: { aboutArticle: false } }, 'error'],
@@ -124,6 +135,10 @@ describe('een algemene vraag over het nieuws', () => {
       'Is er ander nieuws?',
       'Wat speelt er vandaag in Nederland?',
       'Nova, wat is er verder gebeurd?',
+      'Waar heb je wel nieuws over?',
+      'Wat voor nieuws heb je?',
+      'Waar gaat het nieuws vandaag over?',
+      'Welk nieuws is er?',
     ]) {
       assert.equal(isOverviewQuestion(q), true, q);
     }
@@ -136,6 +151,8 @@ describe('een algemene vraag over het nieuws', () => {
       'Vertel me meer',
       'Wat betekent dit nieuws voor mij?',
       'Wat is er nog meer over de stikstofwet?',
+      'Wat voor nieuws heb je over Gaza?',
+      'Waar gaat dit over?',
       'Waarom?',
       '',
     ]) {

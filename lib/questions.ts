@@ -29,6 +29,13 @@ export const FOREIGN_STORY = 'Dat gaat over buitenlands nieuws van vandaag.';
 export function noNews(topic: string | null) {
   return topic ? `Ik heb vandaag geen nieuws over ${topic}.` : 'Daar heb ik vandaag geen nieuws over.';
 }
+// Een "onderwerp" dat gewoon het nieuws zelf is ("Waar heb je wel nieuws over?" gaf "nieuws"). Dan
+// geen "geen nieuws over nieuws", maar een overzicht.
+const GENERIC_TOPIC = /^(het |ander |andere |welk |welke |wat |jouw |je )?(nieuws|berichten|onderwerpen|nieuwsberichten|dingen)( van vandaag)?$/i;
+export function isGenericTopic(topic: string | null) {
+  return !!topic && GENERIC_TOPIC.test(topic.trim());
+}
+
 export const SEARCH_FAILED = 'Ik kan nu niet zoeken in het andere nieuws. Probeer het over een minuut opnieuw.';
 
 export type Candidate = { id: string; title: string; opening: string };
@@ -36,7 +43,8 @@ export type Candidate = { id: string; title: string; opening: string };
 // Woorden die in een algemene vraag over het nieuws voorkomen. Staat er een ander woord in
 // ("Wat gebeurde er vandaag met de boeren?"), dan gaat de vraag over een onderwerp.
 const OVERVIEW_WORDS = new Set(
-  `wat welk welke is was er zijn het de een in van uit op nog meer verder anders ander andere allemaal
+  `wat welk welke waar waarover is was er zijn het de een in van uit op over voor nog wel soort
+  heb hebt heeft hebben jullie gaat gaan meer verder anders ander andere allemaal
   vandaag nu vanochtend vanmiddag vanavond gisteren laatste nieuwste belangrijkste
   nieuws nieuwtjes berichten onderwerpen overzicht hoofdpunten koppen
   gebeurd gebeurde gebeurt gebeuren gaande speelt
@@ -194,6 +202,10 @@ export async function answerQuestion<A extends Answer>(
   if (!routed) return instead(SEARCH_FAILED);
   const topic = routed.topic ?? null;
   const other = routed.id ? articles.find((a) => a.id === routed.id && a.id !== current.id) : undefined;
+  if (!other && isGenericTopic(topic)) {
+    const overview = await deps.overview(null, 'nl');
+    return { ...stay, answer: { ...overview, attempts: [...first.attempts, ...routed.attempts, ...overview.attempts] }, overview: true };
+  }
   if (!other) return instead(noNews(topic));
 
   const second = await deps.answer(other, []);
