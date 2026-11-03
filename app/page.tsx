@@ -611,7 +611,8 @@ export default function Page() {
               {asideWord ? (
                 spokenExplanation(asideWord)
               ) : timedCaptions ? (
-                <Linked segments={linked[activeIndex] ?? []} onWord={explainWord} />
+                // Gewone tekst: de moeilijke woorden zijn aan te tikken in "Nova vertelt".
+                fragment.sentences[activeIndex]
               ) : (
                 fragment.spoken
               )}
