@@ -1,4 +1,5 @@
 import type { NewsArticle } from './articles';
+import type { Region } from './feeds';
 import type { Previous } from './prompt';
 
 // Een vraag over ander nieuws van vandaag. Nova vertelt nog steeds alleen uit een bron: niet
@@ -11,7 +12,7 @@ import type { Previous } from './prompt';
 // 3. Gevonden: Nova beantwoordt de vraag uit dát bericht, en zegt eerst dat het om een ander
 //    bericht gaat. De pagina gaat dan naar dat bericht, zodat bron en datum kloppen.
 //    Niets gevonden: het eerste, eerlijke antwoord, plus dat het ook niet in het andere
-//    (Nederlandse) nieuws van vandaag staat. Iets onzeker (zoeken mislukt, keuze klopt niet): het eerste antwoord.
+//    nieuws van vandaag staat. Iets onzeker (zoeken mislukt, keuze klopt niet): het eerste antwoord.
 //
 // Een algemene vraag ("Wat gebeurde er vandaag?", "Wat is er nog meer?") gaat over geen enkel
 // bericht. Die krijgt een kort overzicht van de nieuwste berichten. In de demo van 3 november 2026
@@ -19,7 +20,8 @@ import type { Previous } from './prompt';
 // (isOverviewQuestion), en anders kan de routeervraag het nog als overzicht aanwijzen.
 
 export const OTHER_STORY = 'Dat gaat over een ander bericht van vandaag.';
-export const NOT_FOUND = 'Ik vond het ook niet in het andere Nederlandse nieuws van vandaag.';
+export const FOREIGN_STORY = 'Dat gaat over buitenlands nieuws van vandaag.';
+export const NOT_FOUND = 'Ik vond het ook niet in het andere nieuws van vandaag.';
 
 export type Candidate = { id: string; title: string; opening: string };
 
@@ -29,12 +31,12 @@ export const OVERVIEW = 'overzicht';
 // Woorden die in een algemene vraag over het nieuws voorkomen. Staat er een ander woord in
 // ("Wat gebeurde er vandaag met de boeren?"), dan gaat de vraag over een onderwerp.
 const OVERVIEW_WORDS = new Set(
-  `wat welk welke is was er zijn het de een in van op nog meer verder anders ander andere allemaal
+  `wat welk welke is was er zijn het de een in van uit op nog meer verder anders ander andere allemaal
   vandaag nu vanochtend vanmiddag vanavond gisteren laatste nieuwste belangrijkste
   nieuws nieuwtjes berichten onderwerpen overzicht hoofdpunten koppen
   gebeurd gebeurde gebeurt gebeuren gaande speelt
   vertel geef noem me mij ons kun kan je jij u eens even dan en dus oké ok oke nou hé he hoi nova eigenlijk
-  nederland binnenland politiek
+  nederland binnenland politiek buitenland buitenlands buitenlandse wereld internationaal internationale
   afgelopen voorbije vorige minuut minuten kwartier uur uren half halve paar binnengekomen nieuw nieuwe
   één twee drie vier vijf tien vijftien twintig dertig veertig vijftig zestig`.split(/\s+/),
 );
@@ -68,7 +70,13 @@ export function recentStories<T extends { published: string }>(articles: T[], mi
 }
 // Een van deze woorden maakt het een vraag over het nieuws. "meer", "verder" en "anders" alleen
 // met "wat ... er": "Wat is er nog meer?" wel, "Vertel me meer" (over dit bericht) niet.
-const OVERVIEW_TOPIC = /\b(vandaag|nieuws|nieuwtjes|berichten|onderwerpen|overzicht|hoofdpunten|koppen)\b/;
+const OVERVIEW_TOPIC = /\b(vandaag|nieuws|nieuwtjes|berichten|onderwerpen|overzicht|hoofdpunten|koppen|buitenland|wereld)\b/;
+const FOREIGN = /\b(buitenland|buitenlands|buitenlandse|wereld|internationaal|internationale)\b/;
+
+// Over welk nieuws gaat een algemene vraag? Standaard Nederlands; buitenlands als de vraag dat zegt.
+export function overviewRegion(question: string): Region {
+  return FOREIGN.test(question.toLowerCase()) ? 'buitenland' : 'nl';
+}
 const OVERVIEW_MORE = /\b(meer|verder|anders|andere?)\b/;
 
 export function isOverviewQuestion(question: string) {
@@ -82,8 +90,13 @@ export function isOverviewQuestion(question: string) {
 // De berichten voor het overzicht: de eerste van de lijst (de opening, daarna de nieuwste).
 const OVERVIEW_COUNT = 5;
 
-export function overviewStories<T>(articles: T[]): T[] {
-  return articles.slice(0, OVERVIEW_COUNT);
+export function overviewStories<T extends { region?: Region }>(articles: T[], region: Region = 'nl'): T[] {
+  return inRegion(articles, region).slice(0, OVERVIEW_COUNT);
+}
+
+// Berichten met dit kenmerk. Zonder kenmerk (zoals in de testselectie) is het Nederlands nieuws.
+export function inRegion<T extends { region?: Region }>(articles: T[], region: Region): T[] {
+  return articles.filter((a) => (a.region ?? 'nl') === region);
 }
 
 type Answer = { spoken: string; mode: 'ai' | 'fallback'; aboutArticle?: boolean; attempts: unknown[] };
@@ -94,13 +107,13 @@ export type QuestionDeps<A extends Answer> = {
   // Over welk bericht gaat de vraag? Een id uit de lijst, OVERVIEW, of null.
   route: (candidates: Candidate[]) => Promise<{ id: string | null; attempts: unknown[] }>;
   // Een kort overzicht van het nieuws, voor een algemene vraag. Met een tijdvak in minuten als
-  // de vraag daarom vroeg ("de afgelopen 10 minuten").
-  overview: (minutes: number | null) => Promise<A>;
+  // de vraag daarom vroeg ("de afgelopen 10 minuten"), en Nederlands of buitenlands nieuws.
+  overview: (minutes: number | null, region: Region) => Promise<A>;
 };
 
-// Alle berichten van vandaag (Binnenland en Politiek samen zijn er zo'n 40), elk kort: titel en
-// begin. Een te krappe grens liet een bericht verderop in de lijst buiten beeld.
-const MAX_CANDIDATES = 60;
+// Alle berichten van vandaag (Binnenland en Politiek samen zijn er zo'n 40, Buitenland zo'n 20),
+// elk kort: titel en begin. Een te krappe grens liet een bericht verderop in de lijst buiten beeld.
+const MAX_CANDIDATES = 90;
 
 export function candidates(articles: NewsArticle[], currentId: string): Candidate[] {
   return articles
@@ -121,6 +134,17 @@ export function pickRoute(text: string, list: Candidate[]): string | null {
   }
 }
 
+// Het model zegt soms in de tekst dat de vraag niet over het bericht gaat ("Dit bericht gaat niet
+// over Oekraïne."), maar zet overBericht toch op true. Dan zoeken we ook verder. Alleen in een zin
+// over "het bericht", of een zin die begint met "Dit/Het gaat niet over": een gewoon antwoord als
+// "Het kabinet is het niet over de wet eens" telt niet.
+const NOT_ABOUT = /\b(niet|nergens) over\b|\bniets (met|te maken)\b|\bover iets anders\b/i;
+export function saysNotAbout(spoken: string) {
+  return spoken
+    .split(/(?<=[.!?])\s+/)
+    .some((s) => (/\bbericht\b/i.test(s) && NOT_ABOUT.test(s)) || /^(dit|dat|het) gaat (niet|nergens) over\b/i.test(s));
+}
+
 export async function answerQuestion<A extends Answer>(
   current: NewsArticle,
   question: string,
@@ -130,19 +154,23 @@ export async function answerQuestion<A extends Answer>(
 ): Promise<{ article: NewsArticle; answer: A; switchedFrom: string | null; overview: boolean }> {
   // Het bericht in beeld blijft staan: het overzicht hoort bij geen enkel bericht in het bijzonder.
   if (isOverviewQuestion(question)) {
-    return { article: current, answer: await deps.overview(newsWindow(question)), switchedFrom: null, overview: true };
+    return { article: current, answer: await deps.overview(newsWindow(question), overviewRegion(question)), switchedFrom: null, overview: true };
   }
 
   const first = await deps.answer(current, previous);
   const stay = { article: current, answer: first, switchedFrom: null, overview: false };
-  if (first.mode !== 'ai' || first.aboutArticle !== false) return stay;
+  if (first.mode !== 'ai' || (first.aboutArticle !== false && !saysNotAbout(first.spoken))) return stay;
 
   const list = candidates(articles, current.id);
   if (!list.length) return stay;
-  const routed = await deps.route(list).catch(() => null);
+  const routed = await deps.route(list).catch((err) => {
+    // Bijvoorbeeld de minuutlimiet van het taalmodel. Nova blijft dan bij het eerste antwoord.
+    console.error('[vraag] zoeken in het andere nieuws mislukt:', err instanceof Error ? err.message.slice(0, 300) : err);
+    return null;
+  });
   if (!routed) return stay;
   if (routed.id === OVERVIEW) {
-    const overview = await deps.overview(newsWindow(question));
+    const overview = await deps.overview(newsWindow(question), overviewRegion(question));
     return {
       ...stay,
       answer: { ...overview, attempts: [...first.attempts, ...routed.attempts, ...overview.attempts] },
@@ -154,12 +182,12 @@ export async function answerQuestion<A extends Answer>(
 
   const second = await deps.answer(other, []);
   // Zegt ook dat bericht dat de vraag er niet over gaat, dan klopte de keuze niet.
-  if (second.mode !== 'ai' || second.aboutArticle === false) return stay;
+  if (second.mode !== 'ai' || second.aboutArticle === false || saysNotAbout(second.spoken)) return stay;
   return {
     article: other,
     answer: {
       ...second,
-      spoken: `${OTHER_STORY} ${second.spoken}`,
+      spoken: `${other.region === 'buitenland' ? FOREIGN_STORY : OTHER_STORY} ${second.spoken}`,
       attempts: [...first.attempts, ...routed.attempts, ...second.attempts],
     },
     switchedFrom: current.id,

@@ -5,7 +5,7 @@ import { findArticle, getArticles } from '@/lib/articles';
 import { asForeground, coreExplanation, warmWhenQuiet, type CacheState } from '@/lib/corecache';
 import { DEV_TOOLS } from '@/lib/config';
 import { PROMPT_VERSION } from '@/lib/prompt';
-import { answerQuestion, overviewStories } from '@/lib/questions';
+import { answerQuestion, inRegion, overviewStories } from '@/lib/questions';
 import { rateLimited, tooMany } from '@/lib/ratelimit';
 import { splitSentences } from '@/lib/spoken';
 import { logLine } from '@/lib/testlog';
@@ -58,10 +58,11 @@ export async function POST(req: Request) {
     const result = await answerQuestion(article, valid.question, valid.previous, articles, {
       answer: ask,
       route: (list) => routeQuestion(valid.question!, list),
-      overview: (minutes) =>
+      // Standaard Nederlands nieuws; buitenlands als de vraag daarom vraagt.
+      overview: (minutes, region) =>
         minutes
-          ? generateRecentOverview(articles, minutes, valid.question!)
-          : generateOverview(overviewStories(articles), valid.question!),
+          ? generateRecentOverview(inRegion(articles, region), minutes, valid.question!)
+          : generateOverview(overviewStories(articles, region), valid.question!),
     });
     answered = result.article;
     switchedFrom = result.switchedFrom;
@@ -80,8 +81,10 @@ export async function POST(req: Request) {
   if (isCore) {
     after(async () => {
       const { articles, live } = await getArticles();
-      const i = articles.findIndex((a) => a.id === article.id);
-      if (live && i >= 0 && articles.length > 1) await warmWhenQuiet([articles[(i + 1) % articles.length]], cacheKey, makeCore);
+      // Het volgende Nederlandse bericht: buitenlands nieuws staat niet in de rij (lib/news.ts).
+      const home = inRegion(articles, 'nl');
+      const i = home.findIndex((a) => a.id === article.id);
+      if (live && home.length > 1) await warmWhenQuiet([home[(i + 1) % home.length]], cacheKey, makeCore);
     });
   }
 

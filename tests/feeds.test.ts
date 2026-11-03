@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { DEFAULT_FEEDS, feedImage, feedUrls, isNewsItem, mergeFeeds } from '../lib/feeds.ts';
+import { DEFAULT_FEEDS, feedImage, feedUrls, foreignFeedUrls, isNewsItem, mergeFeeds } from '../lib/feeds.ts';
 
 // Nederlands nieuws: welke feeds, en wat is een nieuwsbericht. Voorbeelden uit de NOS-feeds van
 // 30 oktober 2026.
@@ -9,6 +9,11 @@ describe('NOS-feeds', () => {
   it('standaard Binnenland en Politiek', () => {
     assert.deepEqual(DEFAULT_FEEDS, ['nosnieuwsbinnenland', 'nosnieuwspolitiek']);
     assert.deepEqual(feedUrls(), ['https://feeds.nos.nl/nosnieuwsbinnenland', 'https://feeds.nos.nl/nosnieuwspolitiek']);
+  });
+
+  it('buitenland apart, standaard aan, uit te zetten', () => {
+    assert.deepEqual(foreignFeedUrls(), ['https://feeds.nos.nl/nosnieuwsbuitenland']);
+    assert.deepEqual(foreignFeedUrls('uit'), []);
   });
 
   it('instelbaar, maar alleen nette namen', () => {

@@ -114,6 +114,7 @@ export async function routeQuestion(question: string, list: Candidate[]) {
 // vandaag?" (lib/questions.ts). Alleen uit titels en het begin van de tekst. Lukt het taalmodel
 // niet, dan de titels zelf: die komen letterlijk uit de bron.
 export async function generateOverview(stories: NewsArticle[], question: string, period?: string): Promise<Explanation> {
+  const foreign = stories.length > 0 && stories.every((a) => a.region === 'buitenland');
   const attempts: gemini.Attempt[] = [];
   const list = stories.map((a) => ({
     title: a.title,
@@ -122,7 +123,7 @@ export async function generateOverview(stories: NewsArticle[], question: string,
     time: period ? clock(a.published) : undefined,
   }));
   try {
-    const { text, model } = await generateJson(OVERVIEW_SYSTEM, [{ role: 'user', content: buildOverviewPrompt(list, question, period) }], attempts);
+    const { text, model } = await generateJson(OVERVIEW_SYSTEM, [{ role: 'user', content: buildOverviewPrompt(list, question, period, foreign) }], attempts);
     const parsed = JSON.parse(text);
     const spoken = typeof parsed.spoken === 'string' ? cleanSpoken(parsed.spoken) : '';
     if (!spoken) throw new Error(`Onbruikbaar overzicht: ${text.slice(0, 200)}`);
@@ -130,7 +131,7 @@ export async function generateOverview(stories: NewsArticle[], question: string,
   } catch (err) {
     console.error('[ai] overzicht zonder taalmodel:', err instanceof Error ? err.message : err);
     return {
-      spoken: cleanSpoken(fallbackOverview(stories, period)),
+      spoken: cleanSpoken(fallbackOverview(stories, period, foreign)),
       mode: 'fallback',
       model: null,
       promptVersion: PROMPT_VERSION,
@@ -140,11 +141,14 @@ export async function generateOverview(stories: NewsArticle[], question: string,
   }
 }
 
-export function fallbackOverview(stories: NewsArticle[], period?: string) {
+export function fallbackOverview(stories: NewsArticle[], period?: string, foreign = false) {
   if (!stories.length) return 'Er is nu geen ander nieuws.';
   const publisher = stories[0].publisher;
   const titles = stories.map((a) => (period ? `Om ${clock(a.published)} uur: ${sentence(a.title)}` : sentence(a.title)));
-  const intro = period ? `Dit is het nieuws van de ${publisher} van ${period}.` : `Dit zijn de nieuwste berichten van de ${publisher}.`;
+  const kind = foreign ? 'buitenlandse nieuws' : 'nieuws';
+  const intro = period
+    ? `Dit is het ${kind} van de ${publisher} van ${period}.`
+    : `Dit zijn de nieuwste ${foreign ? 'buitenlandse ' : ''}berichten van de ${publisher}.`;
   return `${intro} ${titles.join(' ')} Vraag gerust meer over een van deze berichten.`;
 }
 

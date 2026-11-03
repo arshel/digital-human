@@ -4,6 +4,9 @@ import type { NewsArticle } from '../lib/articles.ts';
 import {
   answerQuestion,
   candidates,
+  FOREIGN_STORY,
+  inRegion,
+  overviewRegion,
   clock,
   isOverviewQuestion,
   newsWindow,
@@ -15,6 +18,7 @@ import {
   periodLabel,
   pickRoute,
   recentStories,
+  saysNotAbout,
   type Candidate,
 } from '../lib/questions.ts';
 
@@ -33,8 +37,8 @@ function deps(answers: Record<string, Partial<A>>, routeTo: string | null | 'err
     asked,
     routed,
     deps: {
-      overview: async (minutes: number | null) => {
-        asked.push(minutes ? `overzicht:${minutes}` : 'overzicht');
+      overview: async (minutes: number | null, region: string) => {
+        asked.push(`overzicht${minutes ? `:${minutes}` : ''}${region === 'buitenland' ? ':buitenland' : ''}`);
         return { spoken: 'Dit is het nieuws.', mode: 'ai' as const, attempts: ['model-overzicht'] };
       },
       answer: async (article: NewsArticle, previous: unknown[]) => {
@@ -149,8 +153,64 @@ describe('een algemene vraag over het nieuws', () => {
     assert.deepEqual(r.answer.attempts, ['model-boetes', 'router', 'model-overzicht']);
   });
 
-  it('het overzicht gaat over de eerste vijf berichten', () => {
-    assert.deepEqual(overviewStories([1, 2, 3, 4, 5, 6, 7]), [1, 2, 3, 4, 5]);
+  it('het overzicht gaat over de eerste vijf Nederlandse berichten', () => {
+    const list = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => ({ id, region: 'nl' as const }));
+    const abroad = { id: 'x', region: 'buitenland' as const };
+    assert.deepEqual(overviewStories([abroad, ...list]).map((a) => a.id), ['a', 'b', 'c', 'd', 'e']);
+    assert.deepEqual(overviewStories([abroad, ...list], 'buitenland').map((a) => a.id), ['x']);
+    assert.deepEqual(inRegion([{ id: 'zonder kenmerk' } as { id: string; region?: 'nl' }], 'nl').length, 1, 'zonder kenmerk: Nederlands');
+  });
+});
+
+describe('het model zegt "gaat niet over", maar zet overBericht op true', () => {
+  it('herkent het aan de tekst', () => {
+    for (const t of [
+      'Dit bericht gaat niet over Oekraïne.',
+      'Dit bericht gaat over een mishandeling in Haarlem, niet over Amerika.',
+      'Dit bericht gaat over een incident in Haarlem. Het gaat niet over gebeurtenissen in Amerika.',
+      'Dit bericht heeft niets met Amerika te maken.',
+    ]) {
+      assert.equal(saysNotAbout(t), true, t);
+    }
+  });
+
+  it('een gewoon antwoord niet', () => {
+    for (const t of [
+      'Het kabinet is het niet over de wet eens, zegt de oppositie.',
+      'De boeren zijn kritisch. Dat meldt de NOS in het bericht.',
+      'Het bericht zegt niet hoeveel geld er komt.',
+    ]) {
+      assert.equal(saysNotAbout(t), false, t);
+    }
+  });
+
+  it('zoekt dan toch verder', async () => {
+    const t = deps({ boetes: { spoken: 'Dit bericht gaat niet over Volkswagen.' } }, 'volkswagen');
+    const r = await answerQuestion(ARTICLES[0], 'Hoe gaat het met Volkswagen?', [], ARTICLES, t.deps);
+    assert.equal(r.article.id, 'volkswagen');
+  });
+});
+
+describe('buitenlands nieuws, alleen als je erom vraagt', () => {
+  const abroad = { ...story('trump', 'Trump wint verkiezing'), region: 'buitenland' } as NewsArticle;
+
+  it('een algemene vraag over het buitenland: een overzicht van buitenlands nieuws', async () => {
+    for (const q of ['Wat is er vandaag in het buitenland gebeurd?', 'Wat is het nieuws uit de wereld?']) {
+      assert.equal(isOverviewQuestion(q), true, q);
+      assert.equal(overviewRegion(q), 'buitenland', q);
+    }
+    assert.equal(overviewRegion('Wat gebeurde er vandaag?'), 'nl');
+    const t = deps({}, null);
+    await answerQuestion(ARTICLES[0], 'Wat is er vandaag in het buitenland gebeurd?', [], [...ARTICLES, abroad], t.deps);
+    assert.deepEqual(t.asked, ['overzicht:buitenland']);
+  });
+
+  it('een vraag over een buitenlands bericht: Nova zegt dat het buitenlands nieuws is', async () => {
+    const t = deps({ boetes: { aboutArticle: false } }, 'trump');
+    const r = await answerQuestion(ARTICLES[0], 'Wat is er vandaag in Amerika gaande?', [], [...ARTICLES, abroad], t.deps);
+    assert.equal(r.article.id, 'trump');
+    assert.equal(r.answer.spoken, `${FOREIGN_STORY} Antwoord uit trump.`);
+    assert.ok(t.routed[0].some((c) => c.id === 'trump'), 'buitenlands nieuws staat in de lijst om uit te kiezen');
   });
 });
 

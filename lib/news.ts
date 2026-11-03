@@ -1,5 +1,5 @@
 import demoArticles from '@/data/articles.json';
-import { feedImage, feedUrls, mergeFeeds } from './feeds';
+import { feedImage, feedUrls, foreignFeedUrls, mergeFeeds, type Region } from './feeds';
 
 export type Article = {
   id: string;
@@ -11,12 +11,15 @@ export type Article = {
   body: string;
   // De afbeelding bij het bericht (de enclosure in de NOS-feed), of null.
   image: string | null;
+  // Nederlands nieuws, of buitenlands nieuws (alleen voor vragen, zie lib/feeds.ts).
+  region: Region;
 };
 
 export type StorySet = { stories: Article[]; live: boolean };
 
 // Nederlands nieuws: NOS Binnenland en Politiek (zie lib/feeds.ts; instelbaar met NEWS_FEEDS).
 const FEEDS = feedUrls(process.env.NEWS_FEEDS);
+const FOREIGN_FEEDS = foreignFeedUrls(process.env.NEWS_FOREIGN_FEEDS);
 const FEED_SOURCE = 'NOS';
 // De NOS-feed zelf is tot 60 seconden oud (cache-control: max-age=60). Vaker ophalen heeft dus geen
 // zin; minder vaak maakt vragen als "wat is er de afgelopen 10 minuten gebeurd?" onbetrouwbaar.
@@ -66,7 +69,7 @@ function tag(xml: string, name: string) {
   return xml.match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`))?.[1] ?? '';
 }
 
-export function parseFeed(xml: string, source: string): Article[] {
+export function parseFeed(xml: string, source: string, region: Region = 'nl'): Article[] {
   return [...xml.matchAll(/<item[\s>][\s\S]*?<\/item>/g)].flatMap(([item]) => {
     const title = plain(tag(item, 'title'));
     const link = plain(tag(item, 'link'));
@@ -84,6 +87,7 @@ export function parseFeed(xml: string, source: string): Article[] {
       topic: plain(tag(item, 'category')) || 'Nieuws',
       body,
       image: feedImage(item),
+      region,
     }];
   });
 }
@@ -95,18 +99,24 @@ async function loadPool(): Promise<Pool> {
 }
 
 async function fetchPool(): Promise<Pool> {
+  const feeds = [
+    ...FEEDS.map((url) => ({ url, region: 'nl' as const })),
+    ...FOREIGN_FEEDS.map((url) => ({ url, region: 'buitenland' as const })),
+  ];
   const results = await Promise.allSettled(
-    FEEDS.map(async (url) => {
+    feeds.map(async ({ url, region }) => {
       const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
       if (!res.ok) throw new Error(`${url}: ${res.status}`);
-      return parseFeed(await res.text(), FEED_SOURCE);
+      return parseFeed(await res.text(), FEED_SOURCE, region);
     }),
   );
   for (const r of results) if (r.status === 'rejected') console.error('[news] NOS-feed niet gelezen:', r.reason);
+  // Nederlandse feeds eerst: staat een bericht ook in Buitenland, dan blijft het Nederlands nieuws.
   const pool = mergeFeeds(results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : [])));
-  if (pool.length) return (news.cache = { at: Date.now(), ttl: CACHE_MS, pool, live: true });
-  console.error('[news] geen bruikbare NOS-berichten, terugval op demo-artikelen');
-  return (news.cache = { at: Date.now(), ttl: FAILED_CACHE_MS, pool: demoArticles.map((a) => ({ ...a, image: null })), live: false });
+  if (pool.some((a) => a.region === 'nl')) return (news.cache = { at: Date.now(), ttl: CACHE_MS, pool, live: true });
+  console.error('[news] geen bruikbare Nederlandse NOS-berichten, terugval op demo-artikelen');
+  const demo = demoArticles.map((a) => ({ ...a, image: null, region: 'nl' as const }));
+  return (news.cache = { at: Date.now(), ttl: FAILED_CACHE_MS, pool: demo, live: false });
 }
 
 // Zoveel verhalen noemt de opening. De rest van de feed staat erachter, zodat je
@@ -117,16 +127,20 @@ export const OPENING_COUNT = 3;
 // voor berichten met genoeg tekst om over door te vragen. Daarna de rest, nieuwste eerst.
 // Met `ids` (van de client) blijft een lopend gesprek bij dezelfde nummering; berichten
 // die sindsdien in de feed zijn gekomen, sluiten achteraan aan.
+// Helemaal achteraan het buitenlandse nieuws, nieuwste eerst: alleen voor vragen, niet voor de
+// opening of de lijst.
 export async function getStories(ids?: string[]): Promise<StorySet> {
   const { pool, live } = await loadPool();
-  const recent = [...pool].sort((a, b) => b.published.localeCompare(a.published));
+  const newest = (list: Article[]) => [...list].sort((a, b) => b.published.localeCompare(a.published));
+  const recent = newest(pool.filter((a) => a.region === 'nl'));
+  const foreign = newest(pool.filter((a) => a.region === 'buitenland'));
 
   if (ids?.length) {
-    const kept = ids.flatMap((id) => pool.filter((a) => a.id === id));
-    if (kept.length > 0) return { stories: [...kept, ...recent.filter((a) => !kept.includes(a))], live };
+    const kept = ids.flatMap((id) => recent.filter((a) => a.id === id));
+    if (kept.length > 0) return { stories: [...kept, ...recent.filter((a) => !kept.includes(a)), ...foreign], live };
   }
 
   const rich = recent.slice(0, 12).filter((a) => a.body.length >= 400);
   const opening = [...rich, ...recent.filter((a) => !rich.includes(a))].slice(0, OPENING_COUNT);
-  return { stories: [...opening, ...recent.filter((a) => !opening.includes(a))], live };
+  return { stories: [...opening, ...recent.filter((a) => !opening.includes(a)), ...foreign], live };
 }

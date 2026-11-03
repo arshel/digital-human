@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import testSet from '../data/test-articles.json';
+import type { Region } from './feeds';
 import { getStories } from './news';
 
 // Welke berichten Nova vertelt. Alleen server-side: de brontekst en de hulpnotities gaan naar
@@ -21,6 +22,8 @@ export type NewsArticle = {
   body: string;
   // Afbeelding uit de feed, alleen voor in beeld. Gaat niet naar het taalmodel.
   image: string | null;
+  // Nederlands nieuws, of buitenlands nieuws: dat laatste alleen voor vragen, niet in de lijst.
+  region: Region;
   // Redactionele hulpnotities, alleen in de testselectie. Bij verschil geldt de brontekst.
   keyFacts: string[];
   conditions: string[];
@@ -31,7 +34,7 @@ export type NewsArticle = {
 
 export type ArticleMeta = Pick<
   NewsArticle,
-  'id' | 'shortTitle' | 'title' | 'publisher' | 'url' | 'published' | 'updated' | 'version' | 'image'
+  'id' | 'shortTitle' | 'title' | 'publisher' | 'url' | 'published' | 'updated' | 'version' | 'image' | 'region'
 >;
 
 export type NewsMode = 'test' | 'live';
@@ -48,12 +51,12 @@ function versioned(a: Draft): NewsArticle {
 }
 
 // Een afbeelding is optioneel in de testselectie: zet er "image": "https://…" bij als je die wilt tonen.
-type TestDraft = Omit<Draft, 'image'> & { image?: string | null };
-const TEST_ARTICLES: NewsArticle[] = (testSet.articles as TestDraft[]).map((a) => versioned({ ...a, image: a.image ?? null }));
+type TestDraft = Omit<Draft, 'image' | 'region'> & { image?: string | null };
+const TEST_ARTICLES: NewsArticle[] = (testSet.articles as TestDraft[]).map((a) => versioned({ ...a, image: a.image ?? null, region: 'nl' }));
 
 export function meta(a: NewsArticle): ArticleMeta {
-  const { id, shortTitle, title, publisher, url, published, updated, version, image } = a;
-  return { id, shortTitle, title, publisher, url, published, updated, version, image };
+  const { id, shortTitle, title, publisher, url, published, updated, version, image, region } = a;
+  return { id, shortTitle, title, publisher, url, published, updated, version, image, region };
 }
 
 // live is false als de NOS-feed niet bereikbaar was: dan zijn het de verzonnen demo-artikelen
@@ -76,6 +79,7 @@ export async function getArticles(): Promise<{ articles: NewsArticle[]; live: bo
         retrieved: null,
         body: s.body,
         image: s.image,
+        region: s.region,
         keyFacts: [],
         conditions: [],
         uncertainties: [],

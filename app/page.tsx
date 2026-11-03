@@ -177,6 +177,9 @@ export default function Page() {
 
   const articles = config?.articles ?? [];
   const article = articles[index] ?? null;
+  // Nederlands nieuws staat vooraan; daarachter buitenlands nieuws, alleen voor vragen (zie
+  // lib/news.ts). "Volgend bericht" en de lijst gaan alleen over het Nederlandse deel.
+  const homeCount = articles.filter((a) => a.region !== "buitenland").length;
   // Voor het verversen van de lijst (refreshArticles): welk bericht nu in beeld is.
   const shown = useRef({ article, index, started });
   shown.current = { article, index, started };
@@ -208,8 +211,9 @@ export default function Page() {
     if (current && (isStarted || currentIndex !== 0)) {
       nextIndex = list.findIndex((a) => a.id === current.id);
       if (nextIndex < 0) {
-        list = [current, ...list];
-        nextIndex = 0;
+        // Buitenlands nieuws achteraan, zodat het Nederlandse nieuws vooraan blijft.
+        list = current.region === "buitenland" ? [...list, current] : [current, ...list];
+        nextIndex = current.region === "buitenland" ? list.length - 1 : 0;
       }
     }
     setConfig((prev) => (prev ? { ...prev, articles: list } : prev));
@@ -415,8 +419,8 @@ export default function Page() {
   // Volgend bericht: oude uitleg stopt, een laat antwoord wordt genegeerd en de context van het
   // vorige bericht gaat weg. Pas daarna de kern van het nieuwe bericht.
   function next() {
-    if (!started || articles.length === 0) return;
-    selectArticle((index + 1) % articles.length);
+    if (!started || homeCount === 0) return;
+    selectArticle(index + 1 < homeCount ? index + 1 : 0);
   }
 
   function selectArticle(nextIndex: number) {
@@ -652,7 +656,9 @@ export default function Page() {
               </figure>
             )}
           </div>
-          {fragment && captions && (!timedCaptions || activeSentence) && (
+          {/* Ondertiteling met timing alleen zolang Nova praat (of gepauzeerd is): na de laatste zin
+              verdwijnt ze. De hele tekst blijft te lezen in "Nova vertelt". */}
+          {fragment && captions && (!timedCaptions || (activeSentence && (speaking || presenter.state === "paused"))) && (
             <p
               className={`stage-caption${timedCaptions ? "" : " is-reading"}`}
               aria-label={timingLabel}
@@ -866,7 +872,7 @@ export default function Page() {
             >
               <NextIcon />
               <span>
-                {index === articles.length - 1
+                {index >= homeCount - 1
                   ? "Terug naar bericht 1"
                   : "Volgend bericht"}
               </span>
@@ -954,13 +960,15 @@ export default function Page() {
               {config?.newsMode === "test" ? "In deze selectie" : "Vandaag"}
             </h2>
             <span>
-              {articles.length
-                ? `${index + 1} van ${articles.length}`
-                : "Nieuws"}
+              {!homeCount
+                ? "Nieuws"
+                : index < homeCount
+                  ? `${index + 1} van ${homeCount}`
+                  : "Nu: buitenland"}
             </span>
           </div>
           <div className="story-list">
-            {articles.map((item, i) => (
+            {articles.map((item, i) => (i < homeCount || i === index) && (
               <button
                 type="button"
                 key={item.id}
@@ -977,7 +985,7 @@ export default function Page() {
                   ) : (
                     <NewsIcon />
                   )}
-                  <span>{String(i + 1).padStart(2, "0")}</span>
+                  <span>{i < homeCount ? String(i + 1).padStart(2, "0") : "BL"}</span>
                 </span>
                 <span className="story-publisher">
                   {item.publisher}
@@ -1146,7 +1154,8 @@ export default function Page() {
             <p>
               Nova vertelt over Nederlands nieuws van vandaag, van de NOS. Nova
               gebruikt alleen wat in die berichten staat. Vraag je naar een
-              ander bericht, dan gaat Nova naar dat bericht.
+              ander bericht, dan gaat Nova naar dat bericht. Vraag je naar
+              nieuws uit het buitenland, dan vertelt Nova daar ook over.
             </p>
             <p>
               Bij elk bericht staat de bron. Met ‘Bekijk bron’ lees je het hele

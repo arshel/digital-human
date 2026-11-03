@@ -7,12 +7,29 @@
 
 export const DEFAULT_FEEDS = ['nosnieuwsbinnenland', 'nosnieuwspolitiek'];
 
-export function feedUrls(setting?: string) {
-  const slugs = (setting || DEFAULT_FEEDS.join(','))
+// Buitenlands nieuws: niet in de opening of de lijst, alleen als iemand ernaar vraagt ("Wat is er
+// vandaag in Amerika gaande?"). Anders instellen met NEWS_FOREIGN_FEEDS; NEWS_FOREIGN_FEEDS=uit
+// zet het uit.
+export const DEFAULT_FOREIGN_FEEDS = ['nosnieuwsbuitenland'];
+
+export type Region = 'nl' | 'buitenland';
+
+function slugs(setting: string) {
+  return setting
     .split(',')
     .map((s) => s.trim())
     .filter((s) => /^[a-z]+$/.test(s));
-  return (slugs.length ? slugs : DEFAULT_FEEDS).map((slug) => `https://feeds.nos.nl/${slug}`);
+}
+
+export function feedUrls(setting?: string) {
+  const list = slugs(setting || DEFAULT_FEEDS.join(','));
+  return (list.length ? list : DEFAULT_FEEDS).map((slug) => `https://feeds.nos.nl/${slug}`);
+}
+
+export function foreignFeedUrls(setting?: string) {
+  if (setting?.trim() === 'uit') return [];
+  const list = slugs(setting || DEFAULT_FOREIGN_FEEDS.join(','));
+  return (list.length ? list : DEFAULT_FOREIGN_FEEDS).map((slug) => `https://feeds.nos.nl/${slug}`);
 }
 
 // Geen nieuwsbericht: overzichten van meerdere onderwerpen (tv-samenvattingen zoals
@@ -22,7 +39,8 @@ export function isNewsItem(title: string) {
 }
 
 // Berichten uit meerdere feeds samen: elk bericht één keer (een bericht kan in Binnenland én
-// Politiek staan), en alleen echte nieuwsberichten.
+// Politiek staan), en alleen echte nieuwsberichten. Bij dubbel telt de eerste lijst: geef de
+// Nederlandse feeds dus vóór Buitenland mee.
 export function mergeFeeds<T extends { id: string; sourceUrl: string; title: string }>(lists: T[][]): T[] {
   const seen = new Set<string>();
   const merged: T[] = [];
