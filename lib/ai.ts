@@ -15,7 +15,7 @@ import {
   type Action,
   type Previous,
 } from './prompt';
-import { clock, noRecentNews, periodLabel, pickRoute, recentStories, sentence, type Candidate } from './questions';
+import { clock, noRecentNews, periodLabel, pickRoute, pickTopic, recentStories, sentence, type Candidate } from './questions';
 import { cleanSpoken } from './spoken';
 import { pickHardWords, type HardWord } from './words';
 
@@ -107,7 +107,7 @@ export async function generateExplanation({
 export async function routeQuestion(question: string, list: Candidate[]) {
   const attempts: gemini.Attempt[] = [];
   const { text } = await generateJson(ROUTE_SYSTEM, [{ role: 'user', content: buildRoutePrompt(question, list) }], attempts);
-  return { id: pickRoute(text, list), attempts };
+  return { id: pickRoute(text, list), topic: pickTopic(text), attempts };
 }
 
 // Een kort overzicht van de nieuwste berichten, voor een algemene vraag als "Wat gebeurde er

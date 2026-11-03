@@ -11,8 +11,8 @@ import type { Previous } from './prompt';
 //    het bericht waar de vraag over gaat, of geen.
 // 3. Gevonden: Nova beantwoordt de vraag uit dát bericht, en zegt eerst dat het om een ander
 //    bericht gaat. De pagina gaat dan naar dat bericht, zodat bron en datum kloppen.
-//    Niets gevonden: het eerste, eerlijke antwoord, plus dat het ook niet in het andere
-//    nieuws van vandaag staat. Iets onzeker (zoeken mislukt, keuze klopt niet): het eerste antwoord.
+//    Niets gevonden (of de keuze klopt niet): "Ik heb vandaag geen nieuws over Gaza." Zoeken
+//    mislukt (bijvoorbeeld de minuutlimiet): dat zegt Nova ook eerlijk.
 //
 // Een algemene vraag ("Wat gebeurde er vandaag?", "Wat is er nog meer?") gaat over geen enkel
 // bericht. Die krijgt een kort overzicht van de nieuwste berichten. In de demo van 3 november 2026
@@ -23,7 +23,13 @@ import type { Previous } from './prompt';
 
 export const OTHER_STORY = 'Dat gaat over een ander bericht van vandaag.';
 export const FOREIGN_STORY = 'Dat gaat over buitenlands nieuws van vandaag.';
-export const NOT_FOUND = 'Ik vond het ook niet in het andere nieuws van vandaag.';
+// Niets gevonden, of zoeken lukte niet: dan zegt Nova alleen dat, en niet eerst wat het bericht in
+// beeld wél is ("Dit bericht gaat over de stikstofwet, niet over Gaza"). Zo klinkt het niet alsof
+// Nova de vraag niet begreep.
+export function noNews(topic: string | null) {
+  return topic ? `Ik heb vandaag geen nieuws over ${topic}.` : 'Daar heb ik vandaag geen nieuws over.';
+}
+export const SEARCH_FAILED = 'Ik kan nu niet zoeken in het andere nieuws. Probeer het over een minuut opnieuw.';
 
 export type Candidate = { id: string; title: string; opening: string };
 
@@ -103,8 +109,9 @@ type Answer = { spoken: string; mode: 'ai' | 'fallback'; aboutArticle?: boolean;
 export type QuestionDeps<A extends Answer> = {
   // De vraag beantwoorden uit één bericht.
   answer: (article: NewsArticle, previous: Previous[]) => Promise<A>;
-  // Over welk bericht gaat de vraag? Een id uit de lijst, of null.
-  route: (candidates: Candidate[]) => Promise<{ id: string | null; attempts: unknown[] }>;
+  // Over welk bericht gaat de vraag? Een id uit de lijst, of null. Plus het onderwerp van de vraag
+  // in een paar woorden ("Gaza"), voor als er niets is.
+  route: (candidates: Candidate[]) => Promise<{ id: string | null; topic?: string | null; attempts: unknown[] }>;
   // Een kort overzicht van het nieuws, voor een algemene vraag. Met een tijdvak in minuten als
   // de vraag daarom vroeg ("de afgelopen 10 minuten"), en Nederlands of buitenlands nieuws.
   overview: (minutes: number | null, region: Region) => Promise<A>;
@@ -119,6 +126,19 @@ export function candidates(articles: NewsArticle[], currentId: string): Candidat
     .filter((a) => a.id !== currentId)
     .slice(0, MAX_CANDIDATES)
     .map((a) => ({ id: a.id, title: a.title, opening: a.body.replace(/\s+/g, ' ').slice(0, 110) }));
+}
+
+// Het onderwerp uit de routeervraag, om uit te spreken: kort en alleen gewone tekens. Anders null.
+export function pickTopic(text: string): string | null {
+  try {
+    const topic = JSON.parse(text)?.onderwerp;
+    if (typeof topic !== 'string') return null;
+    const clean = topic.replace(/\s+/g, ' ').trim().replace(/[.!?]+$/, '');
+    if (!clean || clean.length > 40 || clean.split(' ').length > 5) return null;
+    return /^[\p{L}\p{N} '’-]+$/u.test(clean) ? clean : null;
+  } catch {
+    return null;
+  }
 }
 
 // Het antwoord van het model op de routeervraag: alleen een id die echt in de lijst staat.
@@ -162,18 +182,24 @@ export async function answerQuestion<A extends Answer>(
 
   const list = candidates(articles, current.id);
   if (!list.length) return stay;
+  // Vanaf hier ging de vraag volgens het model niet over het bericht in beeld. Het eerste antwoord
+  // ("Dit bericht gaat over de stikstofwet, niet over Gaza") vervangen we dan door een eerlijke zin.
+  // Moeilijke woorden horen bij de oude tekst, dus die gaan weg.
+  const instead = (spoken: string) => ({ ...stay, answer: { ...first, spoken, words: [] } as A });
   const routed = await deps.route(list).catch((err) => {
-    // Bijvoorbeeld de minuutlimiet van het taalmodel. Nova blijft dan bij het eerste antwoord.
+    // Bijvoorbeeld de minuutlimiet van het taalmodel.
     console.error('[vraag] zoeken in het andere nieuws mislukt:', err instanceof Error ? err.message.slice(0, 300) : err);
     return null;
   });
-  if (!routed) return stay;
+  if (!routed) return instead(SEARCH_FAILED);
+  const topic = routed.topic ?? null;
   const other = routed.id ? articles.find((a) => a.id === routed.id && a.id !== current.id) : undefined;
-  if (!other) return { ...stay, answer: { ...first, spoken: `${first.spoken} ${NOT_FOUND}` } };
+  if (!other) return instead(noNews(topic));
 
   const second = await deps.answer(other, []);
+  if (second.mode !== 'ai') return instead(SEARCH_FAILED);
   // Zegt ook dat bericht dat de vraag er niet over gaat, dan klopte de keuze niet.
-  if (second.mode !== 'ai' || second.aboutArticle === false || saysNotAbout(second.spoken)) return stay;
+  if (second.aboutArticle === false || saysNotAbout(second.spoken)) return instead(noNews(topic));
   return {
     article: other,
     answer: {
