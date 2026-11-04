@@ -2,232 +2,97 @@ import type { NewsArticle } from './articles';
 import type { Region } from './feeds';
 import type { Previous } from './prompt';
 
-// Een vraag over ander nieuws van vandaag. Nova vertelt nog steeds alleen uit een bron: niet
-// alleen uit het bericht in beeld, maar uit het bericht waar de vraag over gaat.
+// Een vraag van de gebruiker. Eerst één beslissing: wat voor vraag is dit? Een taalmodel kiest uit
+// een vaste lijst (Beslissing) en geeft JSON terug; de code controleert die streng (parseBeslissing).
+// Daarna doet gewone code de rest: welk bericht, welke berichten in een overzicht, welke datum.
+// Het antwoord zelf komt altijd uit één bericht, of uit de titels en het begin bij een overzicht.
 //
-// 1. Nova beantwoordt de vraag uit het bericht in beeld, en meldt of de vraag daarover ging
-//    (aboutArticle). Voor gewone vragen kost dit dus niets extra.
-// 2. Ging hij er niet over: het taalmodel kiest uit de berichten van vandaag (titel en begin)
-//    het bericht waar de vraag over gaat, of geen.
-// 3. Gevonden: Nova beantwoordt de vraag uit dát bericht, en zegt eerst dat het om een ander
-//    bericht gaat. De pagina gaat dan naar dat bericht, zodat bron en datum kloppen.
-//    Niets gevonden (of de keuze klopt niet): "Ik heb vandaag geen nieuws over Gaza." Zoeken
-//    mislukt (bijvoorbeeld de minuutlimiet): dat zegt Nova ook eerlijk.
+// Waarom zo: tot 4 november 2026 besliste een keten van woordenlijst, een vlag in het antwoord,
+// zoeken op de antwoordtekst en een zoekaanroep. Die gaven samen steeds nieuwe fouten ("geen nieuws
+// over nieuws", het Nederlandse overzicht bij "wat is het Congres"). Zie
+// reports/nova-vragen-review-2026-11-04.md.
 //
-// Een algemene vraag ("Wat gebeurde er vandaag?", "Wat is er nog meer?") gaat over geen enkel
-// bericht. Die krijgt een kort overzicht van de nieuwste berichten. In de demo van 3 november 2026
-// gaf Nova op zo'n vraag het bericht in beeld nog een keer. Alleen herkend vóór het taalmodel
-// (isOverviewQuestion). Het taalmodel mag een vraag niet zelf tot algemene vraag verklaren: op
-// 3 november 2026 gaf dat bij "wat is het Congres" een overzicht van het Nederlandse nieuws.
-// Bij twijfel houdt Nova dus het antwoord uit het bericht in beeld.
+// Bij twijfel of een fout antwoordt Nova uit het bericht in beeld. "Geen nieuws over …" zegt Nova
+// alleen als het model dat koos én het onderwerp nergens in de berichten voorkomt.
 
-export const OTHER_STORY = 'Dat gaat over een ander bericht van vandaag.';
-export const FOREIGN_STORY = 'Dat gaat over buitenlands nieuws van vandaag.';
-// Niets gevonden, of zoeken lukte niet: dan zegt Nova alleen dat, en niet eerst wat het bericht in
-// beeld wél is ("Dit bericht gaat over de stikstofwet, niet over Gaza"). Zo klinkt het niet alsof
-// Nova de vraag niet begreep.
-export function noNews(topic: string | null) {
-  return topic ? `Ik heb vandaag geen nieuws over ${topic}.` : 'Daar heb ik vandaag geen nieuws over.';
-}
-// Een "onderwerp" dat gewoon het nieuws zelf is ("Waar heb je wel nieuws over?" gaf "nieuws"). Dan
-// geen "geen nieuws over nieuws", maar een overzicht.
-const GENERIC_TOPIC = /^(het |ander |andere |welk |welke |wat |jouw |je )?(nieuws|berichten|onderwerpen|nieuwsberichten|dingen)( van vandaag)?$/i;
-export function isGenericTopic(topic: string | null) {
-  return !!topic && GENERIC_TOPIC.test(topic.trim());
-}
+export type Dag = 'vandaag' | 'gisteren';
 
-export const SEARCH_FAILED = 'Ik kan nu niet zoeken in het andere nieuws. Probeer het over een minuut opnieuw.';
+export type Beslissing =
+  | { soort: 'dit_bericht' }
+  | { soort: 'begrip'; begrip: string | null }
+  | { soort: 'ander_bericht'; id: string }
+  | { soort: 'overzicht'; regio: Region; minuten: number | null; dag: Dag | null }
+  | { soort: 'geen_match'; onderwerp: string | null }
+  | { soort: 'onzeker' };
 
-export type Candidate = { id: string; title: string; opening: string };
+export type Soort = Beslissing['soort'];
+export const SOORTEN: Soort[] = ['dit_bericht', 'begrip', 'ander_bericht', 'overzicht', 'geen_match', 'onzeker'];
 
-// Woorden die in een algemene vraag over het nieuws voorkomen. Staat er een ander woord in
-// ("Wat gebeurde er vandaag met de boeren?"), dan gaat de vraag over een onderwerp.
-const OVERVIEW_WORDS = new Set(
-  `wat welk welke waar waarover is was er zijn het de een in van uit op over voor nog wel soort
-  heb hebt heeft hebben jullie gaat gaan meer verder anders ander andere allemaal
-  vandaag nu vanochtend vanmiddag vanavond gisteren laatste nieuwste belangrijkste
-  nieuws nieuwtjes berichten onderwerpen overzicht hoofdpunten koppen
-  gebeurd gebeurde gebeurt gebeuren gaande speelt
-  vertel geef noem me mij ons kun kan je jij u eens even dan en dus oké ok oke nou hé he hoi nova eigenlijk
-  nederland binnenland politiek buitenland buitenlands buitenlandse wereld internationaal internationale
-  afgelopen voorbije vorige minuut minuten kwartier uur uren half halve paar binnengekomen nieuw nieuwe
-  één twee drie vier vijf tien vijftien twintig dertig veertig vijftig zestig`.split(/\s+/),
-);
+// Een beslissing, of een technische fout (geen JSON, onbekende soort, id niet in de lijst). Een fout
+// is iets anders dan "geen nieuws": dan antwoordt Nova gewoon uit het bericht in beeld.
+export type Classification = { beslissing: Beslissing } | { fout: string };
 
-// Een tijdvak in de vraag, in minuten: "de afgelopen 10 minuten", "het laatste half uur",
-// "het afgelopen kwartier", "de laatste 2 uur". Geen tijdvak: null.
-const COUNT: Record<string, number> = {
-  een: 1, één: 1, twee: 2, drie: 3, vier: 4, vijf: 5, tien: 10, vijftien: 15, twintig: 20,
-  dertig: 30, veertig: 40, vijftig: 50, zestig: 60, paar: 3, half: 0.5, halve: 0.5,
-};
-const WINDOW = /\b(?:afgelopen|laatste|voorbije|vorige)\s+(?:(\d+|[a-zé]+)\s+)?(minuut|minuten|kwartier|uur|uren)\b/;
-const MAX_WINDOW = 24 * 60;
+const MAX_MINUTES = 24 * 60;
 
-export function newsWindow(question: string): number | null {
-  const m = question.toLowerCase().match(WINDOW);
-  if (!m) return null;
-  const [, amount, unit] = m;
-  const n = amount === undefined ? 1 : /^\d+$/.test(amount) ? Number(amount) : COUNT[amount];
-  if (!n) return null;
-  const per = unit.startsWith('minu') ? (amount === 'paar' ? 10 / 3 : 1) : unit === 'kwartier' ? 15 : 60;
-  return Math.min(MAX_WINDOW, Math.max(1, Math.round(n * per)));
+// Kort onderwerp om uit te spreken ("Gaza", "de stikstofwet"): alleen gewone tekens. Anders null.
+export function cleanTopic(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const clean = value.replace(/\s+/g, ' ').trim().replace(/[.!?]+$/, '');
+  if (!clean || clean.length > 40 || clean.split(' ').length > 5) return null;
+  return /^[\p{L}\p{N} '’-]+$/u.test(clean) ? clean : null;
 }
 
-// Berichten uit het tijdvak, nieuwste eerst.
-export function recentStories<T extends { published: string }>(articles: T[], minutes: number, now = Date.now()): T[] {
-  const since = now - minutes * 60 * 1000;
-  return articles
-    .filter((a) => Date.parse(a.published) >= since)
-    .sort((a, b) => b.published.localeCompare(a.published))
-    .slice(0, OVERVIEW_COUNT);
-}
-// Een van deze woorden maakt het een vraag over het nieuws. "meer", "verder" en "anders" alleen
-// met "wat ... er": "Wat is er nog meer?" wel, "Vertel me meer" (over dit bericht) niet.
-const OVERVIEW_TOPIC = /\b(vandaag|nieuws|nieuwtjes|berichten|onderwerpen|overzicht|hoofdpunten|koppen|buitenland|wereld)\b/;
-const FOREIGN = /\b(buitenland|buitenlands|buitenlandse|wereld|internationaal|internationale)\b/;
-
-// Over welk nieuws gaat een algemene vraag? Standaard Nederlands; buitenlands als de vraag dat zegt.
-export function overviewRegion(question: string): Region {
-  return FOREIGN.test(question.toLowerCase()) ? 'buitenland' : 'nl';
-}
-const OVERVIEW_MORE = /\b(meer|verder|anders|andere?)\b/;
-
-export function isOverviewQuestion(question: string) {
-  const text = question.toLowerCase().replace(/[^a-zà-ÿ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-  const words = text.split(' ').filter(Boolean);
-  if (!words.length || !words.every((w) => OVERVIEW_WORDS.has(w) || /^\d+$/.test(w))) return false;
-  if (OVERVIEW_TOPIC.test(text) || newsWindow(text) !== null) return true;
-  return OVERVIEW_MORE.test(text) && words.includes('wat') && words.includes('er');
-}
-
-// De berichten voor het overzicht: de eerste van de lijst (de opening, daarna de nieuwste).
-const OVERVIEW_COUNT = 5;
-
-export function overviewStories<T extends { region?: Region }>(articles: T[], region: Region = 'nl'): T[] {
-  return inRegion(articles, region).slice(0, OVERVIEW_COUNT);
-}
-
-// Berichten met dit kenmerk. Zonder kenmerk (zoals in de testselectie) is het Nederlands nieuws.
-export function inRegion<T extends { region?: Region }>(articles: T[], region: Region): T[] {
-  return articles.filter((a) => (a.region ?? 'nl') === region);
-}
-
-type Answer = { spoken: string; mode: 'ai' | 'fallback'; aboutArticle?: boolean; attempts: unknown[] };
-
-export type QuestionDeps<A extends Answer> = {
-  // De vraag beantwoorden uit één bericht.
-  answer: (article: NewsArticle, previous: Previous[]) => Promise<A>;
-  // Over welk bericht gaat de vraag? Een id uit de lijst, of null. Plus het onderwerp van de vraag
-  // in een paar woorden ("Gaza"), voor als er niets is.
-  route: (candidates: Candidate[]) => Promise<{ id: string | null; topic?: string | null; attempts: unknown[] }>;
-  // Een kort overzicht van het nieuws, voor een algemene vraag. Met een tijdvak in minuten als
-  // de vraag daarom vroeg ("de afgelopen 10 minuten"), en Nederlands of buitenlands nieuws.
-  overview: (minutes: number | null, region: Region) => Promise<A>;
-};
-
-// Alle berichten van vandaag (Binnenland en Politiek samen zijn er zo'n 40, Buitenland zo'n 20),
-// elk kort: titel en begin. Een te krappe grens liet een bericht verderop in de lijst buiten beeld.
-const MAX_CANDIDATES = 90;
-
-export function candidates(articles: NewsArticle[], currentId: string): Candidate[] {
-  return articles
-    .filter((a) => a.id !== currentId)
-    .slice(0, MAX_CANDIDATES)
-    .map((a) => ({ id: a.id, title: a.title, opening: a.body.replace(/\s+/g, ' ').slice(0, 110) }));
-}
-
-// Het onderwerp uit de routeervraag, om uit te spreken: kort en alleen gewone tekens. Anders null.
-export function pickTopic(text: string): string | null {
+export function parseBeslissing(text: string, ids: Set<string>): Classification {
+  let data: Record<string, unknown>;
   try {
-    const topic = JSON.parse(text)?.onderwerp;
-    if (typeof topic !== 'string') return null;
-    const clean = topic.replace(/\s+/g, ' ').trim().replace(/[.!?]+$/, '');
-    if (!clean || clean.length > 40 || clean.split(' ').length > 5) return null;
-    return /^[\p{L}\p{N} '’-]+$/u.test(clean) ? clean : null;
+    data = JSON.parse(text);
   } catch {
-    return null;
+    return { fout: 'geen json' };
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return { fout: 'geen object' };
+  const soort = data.soort;
+  switch (soort) {
+    case 'dit_bericht':
+    case 'onzeker':
+      return { beslissing: { soort } };
+    case 'begrip':
+      return { beslissing: { soort, begrip: cleanTopic(data.begrip) } };
+    case 'ander_bericht':
+      return typeof data.id === 'string' && ids.has(data.id)
+        ? { beslissing: { soort, id: data.id } }
+        : { fout: 'id niet in de lijst' };
+    case 'overzicht': {
+      const regio = data.regio ?? 'nl';
+      if (regio !== 'nl' && regio !== 'buitenland') return { fout: 'onbekende regio' };
+      const minuten = data.minuten ?? null;
+      if (minuten !== null && !(Number.isInteger(minuten) && (minuten as number) >= 1 && (minuten as number) <= MAX_MINUTES)) {
+        return { fout: 'ongeldig tijdvak' };
+      }
+      const dag = data.dag ?? null;
+      if (dag !== null && dag !== 'vandaag' && dag !== 'gisteren') return { fout: 'onbekende dag' };
+      return { beslissing: { soort, regio, minuten: minuten as number | null, dag: minuten === null ? (dag as Dag | null) : null } };
+    }
+    case 'geen_match':
+      return { beslissing: { soort, onderwerp: cleanTopic(data.onderwerp) } };
+    default:
+      return { fout: 'onbekende soort' };
   }
 }
 
-// Het antwoord van het model op de routeervraag: alleen een id die echt in de lijst staat.
-export function pickRoute(text: string, list: Candidate[]): string | null {
-  try {
-    const id = JSON.parse(text)?.id;
-    return typeof id === 'string' && list.some((c) => c.id === id) ? id : null;
-  } catch {
-    return null;
-  }
+// ---------- tijd ----------
+
+// "2026-11-04" in Nederlandse tijd. Een ongeldige datum geeft een lege tekst: dat is nooit vandaag.
+export function amsterdamDay(ms: number) {
+  return Number.isFinite(ms) ? new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' }) : '';
 }
 
-// Het model zegt soms in de tekst dat de vraag niet over het bericht gaat ("Dit bericht gaat niet
-// over Oekraïne."), maar zet overBericht toch op true. Dan zoeken we ook verder. Alleen in een zin
-// over "het bericht", of een zin die begint met "Dit/Het gaat niet over": een gewoon antwoord als
-// "Het kabinet is het niet over de wet eens" telt niet.
-const NOT_ABOUT = /\b(niet|nergens) over\b|\bniets (met|te maken)\b|\bover iets anders\b/i;
-export function saysNotAbout(spoken: string) {
-  return spoken
-    .split(/(?<=[.!?])\s+/)
-    .some((s) => (/\bbericht\b/i.test(s) && NOT_ABOUT.test(s)) || /^(dit|dat|het) gaat (niet|nergens) over\b/i.test(s));
+function yesterday(now: number) {
+  return amsterdamDay(Date.parse(`${amsterdamDay(now)}T12:00:00Z`) - 24 * 60 * 60 * 1000);
 }
 
-export async function answerQuestion<A extends Answer>(
-  current: NewsArticle,
-  question: string,
-  previous: Previous[],
-  articles: NewsArticle[],
-  deps: QuestionDeps<A>,
-): Promise<{ article: NewsArticle; answer: A; switchedFrom: string | null; overview: boolean }> {
-  // Het bericht in beeld blijft staan: het overzicht hoort bij geen enkel bericht in het bijzonder.
-  if (isOverviewQuestion(question)) {
-    return { article: current, answer: await deps.overview(newsWindow(question), overviewRegion(question)), switchedFrom: null, overview: true };
-  }
-
-  const first = await deps.answer(current, previous);
-  const stay = { article: current, answer: first, switchedFrom: null, overview: false };
-  // Een uitleg met "Ter uitleg:" beantwoordt de vraag al ("Wat is het Congres?"): niet verder zoeken.
-  if (first.mode !== 'ai' || /\bter uitleg:/i.test(first.spoken)) return stay;
-  if (first.aboutArticle !== false && !saysNotAbout(first.spoken)) return stay;
-
-  const list = candidates(articles, current.id);
-  if (!list.length) return stay;
-  // Vanaf hier ging de vraag volgens het model niet over het bericht in beeld. Het eerste antwoord
-  // ("Dit bericht gaat over de stikstofwet, niet over Gaza") vervangen we dan door een eerlijke zin.
-  // Moeilijke woorden horen bij de oude tekst, dus die gaan weg.
-  const instead = (spoken: string) => ({ ...stay, answer: { ...first, spoken, words: [] } as A });
-  const routed = await deps.route(list).catch((err) => {
-    // Bijvoorbeeld de minuutlimiet van het taalmodel.
-    console.error('[vraag] zoeken in het andere nieuws mislukt:', err instanceof Error ? err.message.slice(0, 300) : err);
-    return null;
-  });
-  if (!routed) return instead(SEARCH_FAILED);
-  const topic = routed.topic ?? null;
-  const other = routed.id ? articles.find((a) => a.id === routed.id && a.id !== current.id) : undefined;
-  if (!other && isGenericTopic(topic)) {
-    const overview = await deps.overview(null, 'nl');
-    return { ...stay, answer: { ...overview, attempts: [...first.attempts, ...routed.attempts, ...overview.attempts] }, overview: true };
-  }
-  if (!other) return instead(noNews(topic));
-
-  const second = await deps.answer(other, []);
-  if (second.mode !== 'ai') return instead(SEARCH_FAILED);
-  // Zegt ook dat bericht dat de vraag er niet over gaat, dan klopte de keuze niet.
-  if (second.aboutArticle === false || saysNotAbout(second.spoken)) return instead(noNews(topic));
-  return {
-    article: other,
-    answer: {
-      ...second,
-      spoken: `${other.region === 'buitenland' ? FOREIGN_STORY : OTHER_STORY} ${second.spoken}`,
-      attempts: [...first.attempts, ...routed.attempts, ...second.attempts],
-    },
-    switchedFrom: current.id,
-    overview: false,
-  };
-}
-
-// ---------- het nieuws van een tijdvak ----------
-
-export function sentence(title: string) {
-  return /[.!?]$/.test(title) ? title : `${title}.`;
+export function isToday(iso: string, now = Date.now()) {
+  const day = amsterdamDay(Date.parse(iso));
+  return day !== '' && day === amsterdamDay(now);
 }
 
 // "14.32", in Nederlandse tijd: zo leest de stem het als een tijd.
@@ -237,18 +102,209 @@ export function clock(iso: string) {
     .replace(':', '.');
 }
 
-// "de afgelopen 10 minuten", "het afgelopen uur", "de afgelopen 2 uur".
-export function periodLabel(minutes: number) {
-  if (minutes === 60) return 'het afgelopen uur';
-  if (minutes % 60 === 0) return `de afgelopen ${minutes / 60} uur`;
-  if (minutes === 1) return 'de afgelopen minuut';
-  return `de afgelopen ${minutes} minuten`;
+// Voor de lijst in de classificatievraag: "vandaag 14.32", "gisteren 20.10", "2 nov".
+export function when(iso: string, now = Date.now()) {
+  if (!Number.isFinite(Date.parse(iso))) return 'onbekend';
+  const day = amsterdamDay(Date.parse(iso));
+  if (day === amsterdamDay(now)) return `vandaag ${clock(iso)}`;
+  if (day === yesterday(now)) return `gisteren ${clock(iso)}`;
+  return new Date(iso).toLocaleDateString('nl-NL', { timeZone: 'Europe/Amsterdam', day: 'numeric', month: 'short' });
 }
 
-// Niets nieuws in het tijdvak: dat eerlijk zeggen, plus het nieuwste bericht en hoe laat het kwam.
-// Vaste zinnen en letterlijk de titel, dus zonder taalmodel.
-export function noRecentNews(articles: { title: string; publisher: string; published: string }[], period: string) {
-  const latest = [...articles].sort((a, b) => b.published.localeCompare(a.published))[0];
-  if (!latest) return `In ${period} is er geen nieuw bericht gekomen.`;
-  return `In ${period} is er geen nieuw bericht van de ${latest.publisher} gekomen. Het nieuwste bericht kwam om ${clock(latest.published)} uur: ${sentence(latest.title)}`;
+// Hoe Nova een tijdvak noemt: "in de afgelopen 10 minuten" / "van de afgelopen 10 minuten".
+export type Period = { in: string; of: string };
+
+export function minutesPeriod(minutes: number): Period {
+  if (minutes === 60) return { in: 'in het afgelopen uur', of: 'van het afgelopen uur' };
+  const span = minutes % 60 === 0 ? `${minutes / 60} uur` : minutes === 1 ? 'minuut' : `${minutes} minuten`;
+  return { in: `in de afgelopen ${span}`, of: `van de afgelopen ${span}` };
+}
+
+// ---------- berichten kiezen ----------
+
+export function inRegion<T extends { region?: Region }>(articles: T[], region: Region): T[] {
+  return articles.filter((a) => (a.region ?? 'nl') === region);
+}
+
+function newestFirst<T extends { published: string }>(list: T[]) {
+  return [...list].sort((a, b) => b.published.localeCompare(a.published));
+}
+
+const OVERVIEW_COUNT = 5;
+// Een minuut speling voor klokverschil met de NOS. Wat daarna gepubliceerd lijkt, telt niet mee.
+const CLOCK_SLACK = 60 * 1000;
+
+// Berichten uit het tijdvak, nieuwste eerst. Nooit iets uit de toekomst.
+export function recentStories<T extends { published: string }>(articles: T[], minutes: number, now = Date.now()): T[] {
+  const since = now - minutes * 60 * 1000;
+  return newestFirst(
+    articles.filter((a) => {
+      const t = Date.parse(a.published);
+      return t >= since && t <= now + CLOCK_SLACK;
+    }),
+  ).slice(0, OVERVIEW_COUNT);
+}
+
+// Wat er in een overzicht komt, en hoe Nova het tijdvak noemt. `period` is undefined bij "het
+// nieuwste nieuws". Bij "vandaag" met minder dan 3 berichten (vroeg op de dag): het nieuwste nieuws.
+export function overviewSelection<T extends { published: string; region?: Region }>(
+  articles: T[],
+  b: Extract<Beslissing, { soort: 'overzicht' }>,
+  now = Date.now(),
+): { stories: T[]; period?: Period; day?: Dag } {
+  const pool = inRegion(articles, b.regio).filter((a) => Date.parse(a.published) <= now + CLOCK_SLACK);
+  if (b.minuten) return { stories: recentStories(pool, b.minuten, now), period: minutesPeriod(b.minuten) };
+  if (b.dag === 'gisteren') {
+    const day = yesterday(now);
+    const stories = newestFirst(pool.filter((a) => amsterdamDay(Date.parse(a.published)) === day)).slice(0, OVERVIEW_COUNT);
+    return { stories, period: { in: 'gisteren', of: 'van gisteren' }, day: 'gisteren' };
+  }
+  if (b.dag === 'vandaag') {
+    const today = newestFirst(pool.filter((a) => isToday(a.published, now)));
+    if (today.length >= 3) return { stories: today.slice(0, OVERVIEW_COUNT), period: { in: 'vandaag', of: 'van vandaag' }, day: 'vandaag' };
+  }
+  return { stories: newestFirst(pool).slice(0, OVERVIEW_COUNT) };
+}
+
+// ---------- vaste zinnen ----------
+
+export function sentence(title: string) {
+  return /[.!?]$/.test(title) ? title : `${title}.`;
+}
+
+// Bij een wissel naar een ander bericht. "van vandaag" alleen als het bericht van vandaag is.
+export function announce(article: { region?: Region; published: string }, now = Date.now()) {
+  const today = isToday(article.published, now) ? ' van vandaag' : '';
+  return article.region === 'buitenland' ? `Dat gaat over buitenlands nieuws${today}.` : `Dat gaat over een ander bericht${today}.`;
+}
+
+export function noNews(topic: string | null) {
+  return topic ? `Ik heb vandaag geen nieuws over ${topic}.` : 'Daar heb ik vandaag geen nieuws over.';
+}
+
+// Een overzicht zonder berichten. Vaste zinnen en letterlijk een titel: geen taalmodel nodig.
+export function emptyOverview(
+  all: { title: string; publisher: string; published: string }[],
+  region: Region,
+  sel: { period?: Period; day?: Dag },
+) {
+  const kind = region === 'buitenland' ? 'buitenlands bericht' : 'bericht';
+  // Nova heeft alleen de nieuwste berichten uit de feed: over gisteren kan er dus meer zijn geweest.
+  if (sel.day === 'gisteren') return `Ik heb geen ${kind} van gisteren. Ik heb alleen de nieuwste berichten van de NOS.`;
+  const latest = newestFirst(all)[0];
+  const when = sel.period?.in ?? 'nu';
+  const start = `${when.charAt(0).toUpperCase()}${when.slice(1)} is er geen nieuw ${kind} gekomen.`;
+  return latest ? `${start} Het nieuwste ${kind} kwam om ${clock(latest.published)} uur: ${sentence(latest.title)}` : start;
+}
+
+// ---------- de vraag ----------
+
+export type Candidate = { id: string; title: string; region: Region; when: string; opening: string };
+
+// Alle andere berichten (Nederlands en buitenland samen zijn er zo'n 55), kort: titel, regio, tijd
+// en begin. Dat is genoeg om te kiezen; het antwoord komt daarna uit het hele bericht.
+const MAX_CANDIDATES = 90;
+
+export function candidates(articles: NewsArticle[], currentId: string, now = Date.now()): Candidate[] {
+  return articles
+    .filter((a) => a.id !== currentId)
+    .slice(0, MAX_CANDIDATES)
+    .map((a) => ({
+      id: a.id,
+      title: a.title,
+      region: a.region ?? 'nl',
+      when: when(a.published, now),
+      opening: a.body.replace(/\s+/g, ' ').slice(0, 90),
+    }));
+}
+
+// Staat het onderwerp toch ergens in de berichten? Dan zegt Nova niet "geen nieuws": het model kan
+// een bericht gemist hebben. Woorden van 4 letters of meer, zonder hoofdlettergevoeligheid.
+export function topicMentioned(topic: string | null, articles: { title: string; body: string }[]) {
+  const words = (topic ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 4);
+  if (!words.length) return false;
+  return articles.some((a) => {
+    const text = `${a.title} ${a.body}`.toLowerCase();
+    return words.some((w) => text.includes(w));
+  });
+}
+
+type Answer = { spoken: string; mode: 'ai' | 'fallback'; attempts: unknown[] };
+
+export type QuestionDeps<A extends Answer> = {
+  // De beslissing. Gooit niet: een fout komt terug als { fout }.
+  classify: (list: Candidate[]) => Promise<{ result: Classification; attempts: unknown[] }>;
+  // De vraag beantwoorden uit één bericht.
+  answer: (article: NewsArticle, previous: Previous[]) => Promise<A>;
+  // Een kort overzicht van deze berichten.
+  overview: (stories: NewsArticle[], period: Period | undefined) => Promise<A>;
+  // Een vaste zin, zonder taalmodel.
+  fixed: (spoken: string) => A;
+};
+
+export type QuestionResult<A> = {
+  article: NewsArticle;
+  answer: A;
+  switchedFrom: string | null;
+  overview: boolean;
+  // Wat er besloten is, voor de metingen (geen tekst): een soort, of "fout".
+  decision: Soort | 'fout';
+};
+
+export async function answerQuestion<A extends Answer>(
+  current: NewsArticle,
+  previous: Previous[],
+  articles: NewsArticle[],
+  deps: QuestionDeps<A>,
+  now = Date.now(),
+): Promise<QuestionResult<A>> {
+  const list = candidates(articles, current.id, now);
+  const classified = await deps.classify(list).catch((err) => ({
+    result: { fout: err instanceof Error ? err.message : String(err) } as Classification,
+    attempts: [] as unknown[],
+  }));
+  // Alle modelpogingen tellen mee in de metingen, ook die van de beslissing.
+  const withAttempts = (answer: A): A => ({ ...answer, attempts: [...classified.attempts, ...answer.attempts] });
+  const here = async (decision: QuestionResult<A>['decision']): Promise<QuestionResult<A>> => ({
+    article: current,
+    answer: withAttempts(await deps.answer(current, previous)),
+    switchedFrom: null,
+    overview: false,
+    decision,
+  });
+
+  if ('fout' in classified.result) {
+    console.error('[vraag] beslissing mislukt, antwoord uit het bericht in beeld:', classified.result.fout.slice(0, 300));
+    return here('fout');
+  }
+  const b = classified.result.beslissing;
+  switch (b.soort) {
+    case 'dit_bericht':
+    case 'begrip':
+    case 'onzeker':
+      return here(b.soort);
+    case 'ander_bericht': {
+      const other = articles.find((a) => a.id === b.id);
+      if (!other || other.id === current.id) return here('dit_bericht');
+      const answer = await deps.answer(other, []);
+      return {
+        article: other,
+        answer: withAttempts({ ...answer, spoken: `${announce(other, now)} ${answer.spoken}` }),
+        switchedFrom: current.id,
+        overview: false,
+        decision: b.soort,
+      };
+    }
+    case 'overzicht': {
+      const sel = overviewSelection(articles, b, now);
+      const answer = sel.stories.length
+        ? await deps.overview(sel.stories, sel.period)
+        : deps.fixed(emptyOverview(inRegion(articles, b.regio), b.regio, sel));
+      return { article: current, answer: withAttempts(answer), switchedFrom: null, overview: true, decision: b.soort };
+    }
+    case 'geen_match':
+      // Staat het onderwerp toch ergens? Dan niet stellig "geen nieuws": antwoord uit dit bericht.
+      if (topicMentioned(b.onderwerp, articles)) return here('onzeker');
+      return { article: current, answer: withAttempts(deps.fixed(noNews(b.onderwerp))), switchedFrom: null, overview: false, decision: b.soort };
+  }
 }

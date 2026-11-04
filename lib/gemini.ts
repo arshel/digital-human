@@ -43,14 +43,28 @@ class ModelError extends Error {
 }
 
 // Geeft ook terug welk model antwoordde, zodat het testlog laat zien of er is teruggevallen.
-export async function generateJson(system: string, messages: Message[], attempts: Attempt[] = []): Promise<{ text: string; model: string }> {
+// Voorkeur voor een aanroep: eerst deze modellen (als de aanbieder ze heeft), en een andere
+// temperatuur. De beslissing bij een vraag gebruikt dit (lib/ai.ts).
+export type GenerateOptions = { prefer?: string[]; temperature?: number };
+
+export function preferred(models: string[], prefer: string[] = []) {
+  return [...prefer.filter((m) => models.includes(m)), ...models.filter((m) => !prefer.includes(m))];
+}
+
+export async function generateJson(
+  system: string,
+  messages: Message[],
+  attempts: Attempt[] = [],
+  options: GenerateOptions = {},
+): Promise<{ text: string; model: string }> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY ontbreekt in .env.local');
 
   const deadline = Date.now() + TOTAL_BUDGET_MS;
-  const available = MODELS.filter((m) => (coolingDown.get(m) ?? 0) <= Date.now());
+  const models = preferred(MODELS, options.prefer);
+  const available = models.filter((m) => (coolingDown.get(m) ?? 0) <= Date.now());
   // Staan ze allemaal in de wacht, probeer dan toch het eerste: misschien is het weer vrij.
-  const queue = available.length ? available : MODELS.slice(0, 1);
+  const queue = available.length ? available : models.slice(0, 1);
   const errors: string[] = [];
 
   for (const model of queue) {
@@ -58,7 +72,7 @@ export async function generateJson(system: string, messages: Message[], attempts
     if (remaining < 2000) break;
     const started = Date.now();
     try {
-      const text = await callModel(model, key, system, messages, remaining);
+      const text = await callModel(model, key, system, messages, remaining, options.temperature);
       attempts.push({ provider: 'gemini', model, ms: Date.now() - started, result: 'ok' });
       return { text, model };
     } catch (err) {
@@ -73,7 +87,7 @@ export async function generateJson(system: string, messages: Message[], attempts
   throw new Error(`Geen Gemini-model beschikbaar\n${errors.join('\n')}`);
 }
 
-async function callModel(model: string, key: string, system: string, messages: Message[], timeoutMs: number) {
+async function callModel(model: string, key: string, system: string, messages: Message[], timeoutMs: number, temperature = 0.4) {
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
@@ -86,7 +100,7 @@ async function callModel(model: string, key: string, system: string, messages: M
         parts: [{ text: m.content }],
       })),
       generationConfig: {
-        temperature: 0.4,
+        temperature,
         maxOutputTokens: 2048,
         responseMimeType: 'application/json',
       },

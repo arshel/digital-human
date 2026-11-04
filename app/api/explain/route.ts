@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { after } from 'next/server';
-import { aiProviders, generateExplanation, generateOverview, generateRecentOverview, routeQuestion, type Explanation } from '@/lib/ai';
+import { aiProviders, classifyQuestion, fixedAnswer, generateExplanation, generateOverview, type Explanation } from '@/lib/ai';
 import { findArticle, getArticles } from '@/lib/articles';
 import { asForeground, coreExplanation, warmWhenQuiet, type CacheState } from '@/lib/corecache';
 import { DEV_TOOLS } from '@/lib/config';
 import { PROMPT_VERSION } from '@/lib/prompt';
-import { answerQuestion, inRegion, overviewStories } from '@/lib/questions';
+import { answerQuestion, inRegion, type QuestionResult } from '@/lib/questions';
 import { rateLimited, tooMany } from '@/lib/ratelimit';
 import { splitSentences } from '@/lib/spoken';
 import { logLine } from '@/lib/testlog';
@@ -39,8 +39,9 @@ export async function POST(req: Request) {
   // `answered` is dan dat bericht, en daar horen bron, datum en versie van het antwoord bij.
   let answered = article;
   let switchedFrom: string | null = null;
-  // Een algemene vraag ("Wat gebeurde er vandaag?"): een overzicht van de nieuwste berichten.
+  // Een algemene vraag ("Wat gebeurde er vandaag?"): een overzicht. En wat er besloten is (lib/questions.ts).
   let overview = false;
+  let decision: QuestionResult<Explanation>['decision'] | null = null;
   const answer = await asForeground<Explanation & { cache: CacheState | 'none' }>(async () => {
     if (isCore) return coreExplanation(article, cacheKey, makeCore);
     const ask = (target: typeof article, previous: typeof valid.previous) =>
@@ -55,18 +56,16 @@ export async function POST(req: Request) {
       return { ...(await ask(article, valid.previous)), cache: 'none' as const };
     }
     const { articles } = await getArticles();
-    const result = await answerQuestion(article, valid.question, valid.previous, articles, {
+    const result = await answerQuestion(article, valid.previous, articles, {
+      classify: (list) => classifyQuestion(article, valid.previous, list, valid.question!),
       answer: ask,
-      route: (list) => routeQuestion(valid.question!, list),
-      // Standaard Nederlands nieuws; buitenlands als de vraag daarom vraagt.
-      overview: (minutes, region) =>
-        minutes
-          ? generateRecentOverview(inRegion(articles, region), minutes, valid.question!)
-          : generateOverview(overviewStories(articles, region), valid.question!),
+      overview: (stories, period) => generateOverview(stories, valid.question!, period),
+      fixed: fixedAnswer,
     });
     answered = result.article;
     switchedFrom = result.switchedFrom;
     overview = result.overview;
+    decision = result.decision;
     return { ...result.answer, cache: 'none' as const };
   });
   const generateMs = Date.now() - generateStart;
@@ -94,6 +93,7 @@ export async function POST(req: Request) {
     articleVersion: answered.version,
     switchedFrom,
     overview,
+    decision,
     promptVersion: answer.promptVersion,
     action: valid.action,
     mode: answer.mode,

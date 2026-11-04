@@ -43,7 +43,7 @@ import type { Action, Previous } from "@/lib/prompt";
 // usePresenter; deze pagina weet alleen wat die doet, niet hoe.
 
 type Config = {
-  newsMode: "test" | "live";
+  newsMode: "test" | "live" | "eval";
   avatarMode: "simulated" | "anam";
   devTools: boolean;
   promptVersion: string;
@@ -113,7 +113,9 @@ function hostname(url: string) {
 export default function Page() {
   const [config, setConfig] = useState<Config | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [index, setIndex] = useState(0);
+  // Het bericht in beeld, op id: de lijst kan verversen terwijl Nova praat of een antwoord onderweg
+  // is, en dan verschuiven de posities. null: nog niets gekozen, dus het eerste bericht.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
   const [fragment, setFragment] = useState<Fragment | null>(null);
   const [history, setHistory] = useState<Previous[]>([]);
@@ -176,13 +178,16 @@ export default function Page() {
   const realAvatar = config?.avatarMode === "anam";
 
   const articles = config?.articles ?? [];
+  const index = Math.max(0, articles.findIndex((a) => a.id === selectedId));
   const article = articles[index] ?? null;
   // Nederlands nieuws staat vooraan; daarachter buitenlands nieuws, alleen voor vragen (zie
   // lib/news.ts). "Volgend bericht" en de lijst gaan alleen over het Nederlandse deel.
   const homeCount = articles.filter((a) => a.region !== "buitenland").length;
   // Voor het verversen van de lijst (refreshArticles): welk bericht nu in beeld is.
-  const shown = useRef({ article, index, started });
-  shown.current = { article, index, started };
+  const shown = useRef({ article, articles, chosen: selectedId !== null, started });
+  shown.current = { article, articles, chosen: selectedId !== null, started };
+  // Alleen het antwoord van de laatste verversing telt: een trage oudere mag het niet overschrijven.
+  const refreshSeq = useRef(0);
   const speaking =
     presenter.state === "speaking" || presenter.state === "loading";
   const paused = presenter.canResume;
@@ -200,24 +205,25 @@ export default function Page() {
   // ook als het intussen uit de feed is. Vóór Start, zolang er niets gekozen is, gewoon de nieuwe
   // opening. Mislukt het of komt er niets, dan blijft de oude lijst.
   const refreshArticles = useCallback(async (): Promise<ArticleMeta[] | null> => {
+    const mine = ++refreshSeq.current;
     const data = await fetch("/api/news")
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null);
+    if (mine !== refreshSeq.current) return shown.current.articles;
     const fresh: ArticleMeta[] | undefined = data?.articles;
     if (!fresh?.length) return null;
-    const { article: current, index: currentIndex, started: isStarted } = shown.current;
+    const { article: current, chosen, started: isStarted } = shown.current;
     let list = fresh;
-    let nextIndex = 0;
-    if (current && (isStarted || currentIndex !== 0)) {
-      nextIndex = list.findIndex((a) => a.id === current.id);
-      if (nextIndex < 0) {
+    if (current && (isStarted || chosen)) {
+      // Het bericht in beeld blijft, ook als het uit de feed is. Vastzetten op id: zo blijft het
+      // in beeld, waar het in de nieuwe lijst ook staat.
+      if (!list.some((a) => a.id === current.id)) {
         // Buitenlands nieuws achteraan, zodat het Nederlandse nieuws vooraan blijft.
         list = current.region === "buitenland" ? [...list, current] : [current, ...list];
-        nextIndex = current.region === "buitenland" ? list.length - 1 : 0;
       }
+      setSelectedId(current.id);
     }
     setConfig((prev) => (prev ? { ...prev, articles: list } : prev));
-    setIndex(nextIndex);
     return list;
   }, []);
 
@@ -322,23 +328,22 @@ export default function Page() {
       // en 'Bekijk bron' bij het antwoord horen. In alle andere gevallen nooit afspelen.
       let context = previous;
       if (data.articleId !== target.id) {
-        let other =
-          data.switchedFrom === target.id
-            ? articles.findIndex((a) => a.id === data.articleId)
-            : -1;
+        // Op id, in de lijst van nu (niet die van toen de vraag begon): die kan intussen ververst zijn.
+        const known = (list: ArticleMeta[] | null) => !!list?.some((a) => a.id === data.articleId);
+        let found = data.switchedFrom === target.id && known(shown.current.articles);
         // Een bericht dat de server al kent en deze pagina nog niet: eerst de lijst verversen.
-        if (other < 0 && data.switchedFrom === target.id) {
+        if (!found && data.switchedFrom === target.id) {
           const fresh = await refreshArticles();
           if (mine !== seq.current) return;
-          other = fresh ? fresh.findIndex((a) => a.id === data.articleId) : -1;
+          found = known(fresh);
         }
-        if (other < 0) {
+        if (!found) {
           setProblem({
             message: "Dit gaat over een bericht dat hier niet meer staat.",
           });
           return;
         }
-        setIndex(other);
+        setSelectedId(data.articleId);
         context = [];
       }
 
@@ -430,7 +435,7 @@ export default function Page() {
     inflight.current = null;
     waiting.current = null;
     presenter.stop();
-    setIndex(nextIndex);
+    setSelectedId(articles[nextIndex].id);
     endAside();
     setFragment(null);
     setTranscript(false);

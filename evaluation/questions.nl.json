@@ -1,0 +1,774 @@
+[
+  {
+    "id": "bericht-01",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wat is er met die verkeersregelaar gebeurd?",
+    "expected": {
+      "kind": "bericht",
+      "rubric": "Antwoord uit Haarlem; onbekende feiten eerlijk benoemen; geen overzicht."
+    }
+  },
+  {
+    "id": "bericht-02",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "waarom werd die man aangehouden",
+    "expected": {
+      "kind": "bericht",
+      "rubric": "Antwoord uit Haarlem; onbekende feiten eerlijk benoemen; geen overzicht."
+    }
+  },
+  {
+    "id": "bericht-03",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Was er iemand gewond?",
+    "expected": {
+      "kind": "bericht",
+      "rubric": "Antwoord uit Haarlem; onbekende feiten eerlijk benoemen; geen overzicht."
+    }
+  },
+  {
+    "id": "bericht-04",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wie zegt dat hij geduwd werd?",
+    "expected": {
+      "kind": "bericht",
+      "rubric": "Antwoord uit Haarlem; onbekende feiten eerlijk benoemen; geen overzicht."
+    }
+  },
+  {
+    "id": "bericht-05",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wanneer gebeurde dit in Haarlem?",
+    "expected": {
+      "kind": "bericht",
+      "rubric": "Antwoord uit Haarlem; onbekende feiten eerlijk benoemen; geen overzicht."
+    }
+  },
+  {
+    "id": "bericht-06",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "geldt dat voor alle verkeersregelaars",
+    "expected": {
+      "kind": "bericht",
+      "rubric": "Antwoord uit Haarlem; onbekende feiten eerlijk benoemen; geen overzicht."
+    }
+  },
+  {
+    "id": "bericht-07",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wat weten we nog niet?",
+    "expected": {
+      "kind": "bericht",
+      "rubric": "Antwoord uit Haarlem; onbekende feiten eerlijk benoemen; geen overzicht."
+    }
+  },
+  {
+    "id": "bericht-08",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "En wat gebeurde er daarna?",
+    "expected": {
+      "kind": "bericht",
+      "rubric": "Antwoord uit Haarlem; onbekende feiten eerlijk benoemen; geen overzicht."
+    }
+  },
+  {
+    "id": "bericht-09",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Kun je dat kort vertellen?",
+    "expected": {
+      "kind": "bericht",
+      "rubric": "Antwoord uit Haarlem; onbekende feiten eerlijk benoemen; geen overzicht."
+    }
+  },
+  {
+    "id": "bericht-10",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "waarom deed hij dat dan",
+    "expected": {
+      "kind": "bericht",
+      "rubric": "Antwoord uit Haarlem; onbekende feiten eerlijk benoemen; geen overzicht."
+    }
+  },
+  {
+    "id": "begrip-01",
+    "input": "gesproken-transcript",
+    "current": "amerika",
+    "question": "wat is het Congres",
+    "expected": {
+      "kind": "begrip",
+      "rubric": "Korte begripsuitleg bij Amerika; Ter uitleg: voor kennis buiten de bron."
+    }
+  },
+  {
+    "id": "begrip-02",
+    "input": "getypt",
+    "current": "amerika",
+    "question": "Wat betekent verkiezingen?",
+    "expected": {
+      "kind": "begrip",
+      "rubric": "Korte begripsuitleg bij Amerika; Ter uitleg: voor kennis buiten de bron."
+    }
+  },
+  {
+    "id": "begrip-03",
+    "input": "gesproken-transcript",
+    "current": "amerika",
+    "question": "wat doet een senator",
+    "expected": {
+      "kind": "begrip",
+      "rubric": "Korte begripsuitleg bij Amerika; Ter uitleg: voor kennis buiten de bron."
+    }
+  },
+  {
+    "id": "begrip-04",
+    "input": "getypt",
+    "current": "amerika",
+    "question": "Wat is een meerderheid?",
+    "expected": {
+      "kind": "begrip",
+      "rubric": "Korte begripsuitleg bij Amerika; Ter uitleg: voor kennis buiten de bron."
+    }
+  },
+  {
+    "id": "begrip-05",
+    "input": "getypt",
+    "current": "amerika",
+    "question": "Leg het woord parlement uit.",
+    "expected": {
+      "kind": "begrip",
+      "rubric": "Korte begripsuitleg bij Amerika; Ter uitleg: voor kennis buiten de bron."
+    }
+  },
+  {
+    "id": "begrip-06",
+    "input": "gesproken-transcript",
+    "current": "amerika",
+    "question": "wat bedoel je met stemmen",
+    "expected": {
+      "kind": "begrip",
+      "rubric": "Korte begripsuitleg bij Amerika; Ter uitleg: voor kennis buiten de bron."
+    }
+  },
+  {
+    "id": "begrip-07",
+    "input": "getypt",
+    "current": "amerika",
+    "question": "Wat is een Republikein?",
+    "expected": {
+      "kind": "begrip",
+      "rubric": "Korte begripsuitleg bij Amerika; Ter uitleg: voor kennis buiten de bron."
+    }
+  },
+  {
+    "id": "begrip-08",
+    "input": "getypt",
+    "current": "amerika",
+    "question": "Wat zijn Democraten?",
+    "expected": {
+      "kind": "begrip",
+      "rubric": "Korte begripsuitleg bij Amerika; Ter uitleg: voor kennis buiten de bron."
+    }
+  },
+  {
+    "id": "begrip-09",
+    "input": "gesproken-transcript",
+    "current": "amerika",
+    "question": "congres wat is dat eigenlijk",
+    "expected": {
+      "kind": "begrip",
+      "rubric": "Korte begripsuitleg bij Amerika; Ter uitleg: voor kennis buiten de bron."
+    }
+  },
+  {
+    "id": "begrip-10",
+    "input": "gesproken-transcript",
+    "current": "amerika",
+    "question": "wat is de senaat",
+    "expected": {
+      "kind": "begrip",
+      "rubric": "Korte begripsuitleg bij Amerika; Ter uitleg: voor kennis buiten de bron."
+    }
+  },
+  {
+    "id": "ander-nl-01",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wat is er besloten over stikstof?",
+    "expected": {
+      "kind": "ander-nl",
+      "rubric": "Antwoord uit stikstofbericht; wissel en aankondiging ander bericht.",
+      "target": "stikstof"
+    }
+  },
+  {
+    "id": "ander-nl-02",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "hoe zit het met die stikstofwet",
+    "expected": {
+      "kind": "ander-nl",
+      "rubric": "Antwoord uit stikstofbericht; wissel en aankondiging ander bericht.",
+      "target": "stikstof"
+    }
+  },
+  {
+    "id": "ander-nl-03",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Moeten boeren nu stoppen?",
+    "expected": {
+      "kind": "ander-nl",
+      "rubric": "Antwoord uit stikstofbericht; wissel en aankondiging ander bericht.",
+      "target": "stikstof"
+    }
+  },
+  {
+    "id": "ander-nl-04",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "wat heeft de minister over stikstof gezegd",
+    "expected": {
+      "kind": "ander-nl",
+      "rubric": "Antwoord uit stikstofbericht; wissel en aankondiging ander bericht.",
+      "target": "stikstof"
+    }
+  },
+  {
+    "id": "ander-nl-05",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wanneer gaat de stikstofwet in?",
+    "expected": {
+      "kind": "ander-nl",
+      "rubric": "Antwoord uit stikstofbericht; wissel en aankondiging ander bericht.",
+      "target": "stikstof"
+    }
+  },
+  {
+    "id": "ander-nl-06",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "geldt die wet ook voor bouwers",
+    "expected": {
+      "kind": "ander-nl",
+      "rubric": "Antwoord uit stikstofbericht; wissel en aankondiging ander bericht.",
+      "target": "stikstof"
+    }
+  },
+  {
+    "id": "ander-nl-07",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Vertel over het voorstel over stikstof.",
+    "expected": {
+      "kind": "ander-nl",
+      "rubric": "Antwoord uit stikstofbericht; wissel en aankondiging ander bericht.",
+      "target": "stikstof"
+    }
+  },
+  {
+    "id": "ander-nl-08",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "is die nieuwe stikstof regel al zeker",
+    "expected": {
+      "kind": "ander-nl",
+      "rubric": "Antwoord uit stikstofbericht; wissel en aankondiging ander bericht.",
+      "target": "stikstof"
+    }
+  },
+  {
+    "id": "ander-nl-09",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wat vindt de Kamer van de stikstofwet?",
+    "expected": {
+      "kind": "ander-nl",
+      "rubric": "Antwoord uit stikstofbericht; wissel en aankondiging ander bericht.",
+      "target": "stikstof"
+    }
+  },
+  {
+    "id": "ander-nl-10",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "hoeveel minder stikstof moet er komen",
+    "expected": {
+      "kind": "ander-nl",
+      "rubric": "Antwoord uit stikstofbericht; wissel en aankondiging ander bericht.",
+      "target": "stikstof"
+    }
+  },
+  {
+    "id": "buitenlands-01",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wat gebeurt er in Oekraïne?",
+    "expected": {
+      "kind": "buitenlands",
+      "rubric": "Antwoord uit Oekraïnebericht; aankondiging buitenlands nieuws.",
+      "target": "oekraine"
+    }
+  },
+  {
+    "id": "buitenlands-02",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "wat is er in oekraine aan de hand",
+    "expected": {
+      "kind": "buitenlands",
+      "rubric": "Antwoord uit Oekraïnebericht; aankondiging buitenlands nieuws.",
+      "target": "oekraine"
+    }
+  },
+  {
+    "id": "buitenlands-03",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Is er nieuws over Kyiv?",
+    "expected": {
+      "kind": "buitenlands",
+      "rubric": "Antwoord uit Oekraïnebericht; aankondiging buitenlands nieuws.",
+      "target": "oekraine"
+    }
+  },
+  {
+    "id": "buitenlands-04",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "vertel over de aanvallen in oekraïne",
+    "expected": {
+      "kind": "buitenlands",
+      "rubric": "Antwoord uit Oekraïnebericht; aankondiging buitenlands nieuws.",
+      "target": "oekraine"
+    }
+  },
+  {
+    "id": "buitenlands-05",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wat zegt Oekraïne over de aanval?",
+    "expected": {
+      "kind": "buitenlands",
+      "rubric": "Antwoord uit Oekraïnebericht; aankondiging buitenlands nieuws.",
+      "target": "oekraine"
+    }
+  },
+  {
+    "id": "buitenlands-06",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "zijn er mensen gewond in kyiv",
+    "expected": {
+      "kind": "buitenlands",
+      "rubric": "Antwoord uit Oekraïnebericht; aankondiging buitenlands nieuws.",
+      "target": "oekraine"
+    }
+  },
+  {
+    "id": "buitenlands-07",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wanneer was die aanval op Kyiv?",
+    "expected": {
+      "kind": "buitenlands",
+      "rubric": "Antwoord uit Oekraïnebericht; aankondiging buitenlands nieuws.",
+      "target": "oekraine"
+    }
+  },
+  {
+    "id": "buitenlands-08",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "wat zegt rusland over die aanval",
+    "expected": {
+      "kind": "buitenlands",
+      "rubric": "Antwoord uit Oekraïnebericht; aankondiging buitenlands nieuws.",
+      "target": "oekraine"
+    }
+  },
+  {
+    "id": "buitenlands-09",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Kun je het nieuws uit Oekraïne uitleggen?",
+    "expected": {
+      "kind": "buitenlands",
+      "rubric": "Antwoord uit Oekraïnebericht; aankondiging buitenlands nieuws.",
+      "target": "oekraine"
+    }
+  },
+  {
+    "id": "buitenlands-10",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "hoe zit het met die beschieting in kiev",
+    "expected": {
+      "kind": "buitenlands",
+      "rubric": "Antwoord uit Oekraïnebericht; aankondiging buitenlands nieuws.",
+      "target": "oekraine"
+    }
+  },
+  {
+    "id": "overzicht-nl-01",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wat gebeurde er vandaag?",
+    "expected": {
+      "kind": "overzicht-nl",
+      "rubric": "Nederlands overzicht; geen herhaling van alleen huidig bericht.",
+      "region": "nl"
+    }
+  },
+  {
+    "id": "overzicht-nl-02",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "waar heb je wel nieuws over",
+    "expected": {
+      "kind": "overzicht-nl",
+      "rubric": "Nederlands overzicht; geen herhaling van alleen huidig bericht.",
+      "region": "nl"
+    },
+    "previous": [
+      {
+        "action": "question",
+        "spoken": "Ik heb vandaag geen nieuws over Gaza."
+      }
+    ]
+  },
+  {
+    "id": "overzicht-nl-03",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wat is het belangrijkste nieuws?",
+    "expected": {
+      "kind": "overzicht-nl",
+      "rubric": "Nederlands overzicht; geen herhaling van alleen huidig bericht.",
+      "region": "nl"
+    }
+  },
+  {
+    "id": "overzicht-nl-04",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "wat is er nog meer",
+    "expected": {
+      "kind": "overzicht-nl",
+      "rubric": "Nederlands overzicht; geen herhaling van alleen huidig bericht.",
+      "region": "nl"
+    }
+  },
+  {
+    "id": "overzicht-nl-05",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Geef me het nieuws uit Nederland.",
+    "expected": {
+      "kind": "overzicht-nl",
+      "rubric": "Nederlands overzicht; geen herhaling van alleen huidig bericht.",
+      "region": "nl"
+    }
+  },
+  {
+    "id": "overzicht-nl-06",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "wat is er de afgelopen 10 minuten gebeurd",
+    "expected": {
+      "kind": "overzicht-nl",
+      "rubric": "Nederlands overzicht; geen herhaling van alleen huidig bericht.",
+      "region": "nl",
+      "minutes": 10
+    }
+  },
+  {
+    "id": "overzicht-nl-07",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wat is er in het laatste half uur gebeurd?",
+    "expected": {
+      "kind": "overzicht-nl",
+      "rubric": "Nederlands overzicht; geen herhaling van alleen huidig bericht.",
+      "region": "nl",
+      "minutes": 30
+    }
+  },
+  {
+    "id": "overzicht-nl-08",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "wat gebeurde er het afgelopen kwartier",
+    "expected": {
+      "kind": "overzicht-nl",
+      "rubric": "Nederlands overzicht; geen herhaling van alleen huidig bericht.",
+      "region": "nl",
+      "minutes": 15
+    }
+  },
+  {
+    "id": "overzicht-nl-09",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Kun je even de hoofdpunten noemen?",
+    "expected": {
+      "kind": "overzicht-nl",
+      "rubric": "Nederlands overzicht; geen herhaling van alleen huidig bericht.",
+      "region": "nl"
+    }
+  },
+  {
+    "id": "overzicht-nl-10",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "wat speelt er momenteel in nederland",
+    "expected": {
+      "kind": "overzicht-nl",
+      "rubric": "Nederlands overzicht; geen herhaling van alleen huidig bericht.",
+      "region": "nl"
+    }
+  },
+  {
+    "id": "overzicht-buitenland-01",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wat is het nieuws uit het buitenland?",
+    "expected": {
+      "kind": "overzicht-buitenland",
+      "rubric": "Buitenlands overzicht; regio expliciet noemen.",
+      "region": "buitenland"
+    }
+  },
+  {
+    "id": "overzicht-buitenland-02",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "wat is er in de wereld gebeurd",
+    "expected": {
+      "kind": "overzicht-buitenland",
+      "rubric": "Buitenlands overzicht; regio expliciet noemen.",
+      "region": "buitenland"
+    }
+  },
+  {
+    "id": "overzicht-buitenland-03",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Geef een overzicht van het buitenlandse nieuws.",
+    "expected": {
+      "kind": "overzicht-buitenland",
+      "rubric": "Buitenlands overzicht; regio expliciet noemen.",
+      "region": "buitenland"
+    }
+  },
+  {
+    "id": "overzicht-buitenland-04",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "wat is het internationale nieuws",
+    "expected": {
+      "kind": "overzicht-buitenland",
+      "rubric": "Buitenlands overzicht; regio expliciet noemen.",
+      "region": "buitenland"
+    }
+  },
+  {
+    "id": "overzicht-buitenland-05",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wat gebeurde er het afgelopen uur in het buitenland?",
+    "expected": {
+      "kind": "overzicht-buitenland",
+      "rubric": "Buitenlands overzicht; regio expliciet noemen.",
+      "region": "buitenland",
+      "minutes": 60
+    }
+  },
+  {
+    "id": "overzicht-buitenland-06",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "wat is er buiten nederland gebeurd",
+    "expected": {
+      "kind": "overzicht-buitenland",
+      "rubric": "Buitenlands overzicht; regio expliciet noemen.",
+      "region": "buitenland"
+    }
+  },
+  {
+    "id": "overzicht-buitenland-07",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wat zijn de belangrijkste buitenlandse berichten?",
+    "expected": {
+      "kind": "overzicht-buitenland",
+      "rubric": "Buitenlands overzicht; regio expliciet noemen.",
+      "region": "buitenland"
+    }
+  },
+  {
+    "id": "overzicht-buitenland-08",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "vertel het wereldnieuws",
+    "expected": {
+      "kind": "overzicht-buitenland",
+      "rubric": "Buitenlands overzicht; regio expliciet noemen.",
+      "region": "buitenland"
+    }
+  },
+  {
+    "id": "overzicht-buitenland-09",
+    "input": "getypt",
+    "current": "haarlem",
+    "question": "Wat gebeurde er de afgelopen 2 uur in de wereld?",
+    "expected": {
+      "kind": "overzicht-buitenland",
+      "rubric": "Buitenlands overzicht; regio expliciet noemen.",
+      "region": "buitenland",
+      "minutes": 120
+    }
+  },
+  {
+    "id": "overzicht-buitenland-10",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "heb je nog buitenlands nieuws",
+    "expected": {
+      "kind": "overzicht-buitenland",
+      "rubric": "Buitenlands overzicht; regio expliciet noemen.",
+      "region": "buitenland"
+    }
+  },
+  {
+    "id": "geen-nieuws-01",
+    "input": "gesproken-transcript",
+    "current": "stikstof",
+    "question": "wat gebeurde er in gaza",
+    "expected": {
+      "kind": "geen-nieuws",
+      "rubric": "Zeg dat er vandaag geen beschikbaar nieuws over het gevraagde onderwerp is; geen verzonnen feiten."
+    }
+  },
+  {
+    "id": "geen-nieuws-02",
+    "input": "getypt",
+    "current": "stikstof",
+    "question": "Is er nieuws over de maanlanding?",
+    "expected": {
+      "kind": "geen-nieuws",
+      "rubric": "Zeg dat er vandaag geen beschikbaar nieuws over het gevraagde onderwerp is; geen verzonnen feiten."
+    }
+  },
+  {
+    "id": "geen-nieuws-03",
+    "input": "gesproken-transcript",
+    "current": "stikstof",
+    "question": "wat gebeurt er op antarctica",
+    "expected": {
+      "kind": "geen-nieuws",
+      "rubric": "Zeg dat er vandaag geen beschikbaar nieuws over het gevraagde onderwerp is; geen verzonnen feiten."
+    }
+  },
+  {
+    "id": "geen-nieuws-04",
+    "input": "getypt",
+    "current": "stikstof",
+    "question": "Vertel over het treinongeluk in Peru.",
+    "expected": {
+      "kind": "geen-nieuws",
+      "rubric": "Zeg dat er vandaag geen beschikbaar nieuws over het gevraagde onderwerp is; geen verzonnen feiten."
+    }
+  },
+  {
+    "id": "geen-nieuws-05",
+    "input": "gesproken-transcript",
+    "current": "stikstof",
+    "question": "is er vandaag nieuws over mars",
+    "expected": {
+      "kind": "geen-nieuws",
+      "rubric": "Zeg dat er vandaag geen beschikbaar nieuws over het gevraagde onderwerp is; geen verzonnen feiten."
+    }
+  },
+  {
+    "id": "geen-nieuws-06",
+    "input": "getypt",
+    "current": "stikstof",
+    "question": "Wat weet je over de verkiezingen in Bhutan?",
+    "expected": {
+      "kind": "geen-nieuws",
+      "rubric": "Zeg dat er vandaag geen beschikbaar nieuws over het gevraagde onderwerp is; geen verzonnen feiten."
+    }
+  },
+  {
+    "id": "geen-nieuws-07",
+    "input": "gesproken-transcript",
+    "current": "stikstof",
+    "question": "wat is er in groenland gebeurd",
+    "expected": {
+      "kind": "geen-nieuws",
+      "rubric": "Zeg dat er vandaag geen beschikbaar nieuws over het gevraagde onderwerp is; geen verzonnen feiten."
+    }
+  },
+  {
+    "id": "geen-nieuws-08",
+    "input": "getypt",
+    "current": "stikstof",
+    "question": "Heb je nieuws over de vulkaan op Tonga?",
+    "expected": {
+      "kind": "geen-nieuws",
+      "rubric": "Zeg dat er vandaag geen beschikbaar nieuws over het gevraagde onderwerp is; geen verzonnen feiten."
+    }
+  },
+  {
+    "id": "geen-nieuws-09",
+    "input": "gesproken-transcript",
+    "current": "stikstof",
+    "question": "hoe zit het met het water op curaçao",
+    "expected": {
+      "kind": "geen-nieuws",
+      "rubric": "Zeg dat er vandaag geen beschikbaar nieuws over het gevraagde onderwerp is; geen verzonnen feiten."
+    }
+  },
+  {
+    "id": "geen-nieuws-10",
+    "input": "getypt",
+    "current": "stikstof",
+    "question": "Is er nieuws over de staking in IJsland?",
+    "expected": {
+      "kind": "geen-nieuws",
+      "rubric": "Zeg dat er vandaag geen beschikbaar nieuws over het gevraagde onderwerp is; geen verzonnen feiten."
+    }
+  },
+  {
+    "id": "regressie-amerika",
+    "input": "gesproken-transcript",
+    "current": "haarlem",
+    "question": "wat is er vandaag in amerika gaande",
+    "expected": {
+      "kind": "buitenlands",
+      "target": "amerika",
+      "rubric": "Antwoord uit Amerikaans bericht; begint met Dat gaat over buitenlands nieuws van vandaag."
+    }
+  },
+  {
+    "id": "spraak-congres",
+    "input": "gesproken-transcript",
+    "current": "amerika",
+    "question": "wat is het kongres",
+    "expected": {
+      "kind": "begrip",
+      "rubric": "Herken vermoedelijk Congres bij verkiezingsbericht; uitleg of korte verduidelijking."
+    }
+  }
+]

@@ -33,8 +33,28 @@ const MAX_BODY = 6000;
 // Op globalThis en met één lopende verversing: in de ontwikkelserver heeft elke route een eigen
 // kopie van deze module, en /api/news en /api/explain moeten dezelfde berichten zien.
 type Pool = { at: number; ttl: number; pool: Article[]; live: boolean };
-const store = globalThis as typeof globalThis & { __novaNews?: { cache: Pool | null; loading: Promise<Pool> | null } };
-const news = (store.__novaNews ??= { cache: null, loading: null });
+const store = globalThis as typeof globalThis & {
+  __novaNews?: { cache: Pool | null; loading: Promise<Pool> | null; seen: Map<string, Article> };
+};
+const news = (store.__novaNews ??= { cache: null, loading: null, seen: new Map() });
+news.seen ??= new Map();
+
+// Berichten die de server eerder liet zien, ook als ze intussen uit de feed zijn (de feed houdt
+// alleen de nieuwste 20 per rubriek). Zo kan iemand doorvragen over een bericht dat nog in beeld
+// staat. Begrensd: de oudste gaan eruit.
+const MAX_SEEN = 300;
+
+function remember(pool: Article[]) {
+  for (const a of pool) {
+    news.seen.delete(a.id);
+    news.seen.set(a.id, a);
+  }
+  while (news.seen.size > MAX_SEEN) news.seen.delete(news.seen.keys().next().value!);
+}
+
+export function seenArticle(id: string): Article | null {
+  return news.seen.get(id) ?? null;
+}
 
 const ENTITIES: Record<string, string> = {
   nbsp: ' ', quot: '"', apos: "'", lt: '<', gt: '>',
@@ -113,7 +133,10 @@ async function fetchPool(): Promise<Pool> {
   for (const r of results) if (r.status === 'rejected') console.error('[news] NOS-feed niet gelezen:', r.reason);
   // Nederlandse feeds eerst: staat een bericht ook in Buitenland, dan blijft het Nederlands nieuws.
   const pool = mergeFeeds(results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : [])));
-  if (pool.some((a) => a.region === 'nl')) return (news.cache = { at: Date.now(), ttl: CACHE_MS, pool, live: true });
+  if (pool.some((a) => a.region === 'nl')) {
+    remember(pool);
+    return (news.cache = { at: Date.now(), ttl: CACHE_MS, pool, live: true });
+  }
   console.error('[news] geen bruikbare Nederlandse NOS-berichten, terugval op demo-artikelen');
   const demo = demoArticles.map((a) => ({ ...a, image: null, region: 'nl' as const }));
   return (news.cache = { at: Date.now(), ttl: FAILED_CACHE_MS, pool: demo, live: false });

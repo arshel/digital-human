@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
+import evalContext from '../evaluation/context.nl.json';
 import testSet from '../data/test-articles.json';
 import type { Region } from './feeds';
-import { getStories } from './news';
+import { getStories, seenArticle, type Article } from './news';
 
 // Welke berichten Nova vertelt. Alleen server-side: de brontekst en de hulpnotities gaan naar
 // Gemini, de browser krijgt alleen de gegevens voor titel en bron (ArticleMeta).
@@ -37,9 +38,12 @@ export type ArticleMeta = Pick<
   'id' | 'shortTitle' | 'title' | 'publisher' | 'url' | 'published' | 'updated' | 'version' | 'image' | 'region'
 >;
 
-export type NewsMode = 'test' | 'live';
+export type NewsMode = 'test' | 'live' | 'eval';
 
-export const NEWS_MODE: NewsMode = process.env.NEWS_MODE === 'live' ? 'live' : 'test';
+// NEWS_MODE=eval: de vier vaste, verzonnen berichten uit evaluation/context.nl.json, met de juiste
+// regio en van vandaag. Alleen om de vragenset af te spelen (scripts/evaluate-questions.mjs).
+export const NEWS_MODE: NewsMode =
+  process.env.NEWS_MODE === 'live' ? 'live' : process.env.NEWS_MODE === 'eval' ? 'eval' : 'test';
 
 type Draft = Omit<NewsArticle, 'version'>;
 
@@ -61,35 +65,62 @@ export function meta(a: NewsArticle): ArticleMeta {
 
 // live is false als de NOS-feed niet bereikbaar was: dan zijn het de verzonnen demo-artikelen
 // uit data/articles.json, en die tonen we niet als nieuws.
-export async function getArticles(): Promise<{ articles: NewsArticle[]; live: boolean }> {
-  if (NEWS_MODE === 'test') return { articles: TEST_ARTICLES, live: true };
-
-  const { stories, live } = await getStories();
-  return {
-    live,
-    articles: stories.map((s) =>
-      versioned({
-        id: s.id,
-        shortTitle: s.title,
-        title: s.title,
-        publisher: s.source,
-        url: s.sourceUrl,
-        published: s.published,
-        updated: null,
-        retrieved: null,
-        body: s.body,
-        image: s.image,
-        region: s.region,
-        keyFacts: [],
-        conditions: [],
-        uncertainties: [],
-      }),
-    ),
-  };
+function evalArticles(now = Date.now()): NewsArticle[] {
+  return (evalContext as { id: string; title: string; region: string; body: string }[]).map((a, i) =>
+    versioned({
+      id: a.id,
+      shortTitle: a.title,
+      title: a.title,
+      publisher: 'NOS',
+      url: 'https://nos.nl/',
+      // Allemaal van het afgelopen uur, het eerste het nieuwst.
+      published: new Date(now - (i + 1) * 5 * 60 * 1000).toISOString(),
+      updated: null,
+      retrieved: null,
+      body: a.body,
+      image: null,
+      region: a.region === 'buitenland' ? 'buitenland' : 'nl',
+      keyFacts: [],
+      conditions: [],
+      uncertainties: [],
+    }),
+  );
 }
 
+function fromFeed(s: Article): NewsArticle {
+  return versioned({
+    id: s.id,
+    shortTitle: s.title,
+    title: s.title,
+    publisher: s.source,
+    url: s.sourceUrl,
+    published: s.published,
+    updated: null,
+    retrieved: null,
+    body: s.body,
+    image: s.image,
+    region: s.region,
+    keyFacts: [],
+    conditions: [],
+    uncertainties: [],
+  });
+}
+
+export async function getArticles(): Promise<{ articles: NewsArticle[]; live: boolean }> {
+  if (NEWS_MODE === 'test') return { articles: TEST_ARTICLES, live: true };
+  if (NEWS_MODE === 'eval') return { articles: evalArticles(), live: true };
+
+  const { stories, live } = await getStories();
+  return { live, articles: stories.map(fromFeed) };
+}
+
+// Ook een bericht dat intussen uit de feed is, maar dat de server eerder liet zien (lib/news.ts):
+// dan kan iemand nog doorvragen over het bericht in beeld.
 export async function findArticle(id: string) {
   const { articles, live } = await getArticles();
+  if (!live) return null;
   const article = articles.find((a) => a.id === id);
-  return article && live ? article : null;
+  if (article) return article;
+  const seen = NEWS_MODE === 'live' ? seenArticle(id) : null;
+  return seen ? fromFeed(seen) : null;
 }

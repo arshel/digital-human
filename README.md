@@ -36,7 +36,7 @@ npm run typecheck
 ```
 data/test-articles.json        vaste testselectie: 3 NOS-berichten, brontekst + hulpnotities
 lib/articles.ts                berichten per modus (test of live), artikelversie (hash)
-lib/news.ts, lib/feeds.ts      NOS Binnenland en Politiek voor NEWS_MODE=live (15 min cache)
+lib/news.ts, lib/feeds.ts      NOS Binnenland en Politiek (plus Buitenland voor vragen) voor NEWS_MODE=live (1 min cache)
 lib/prompt.ts                  systeemprompt, PROMPT_VERSION, opdracht per knop
 lib/ai.ts                      generateExplanation(): Groq, Mistral of Gemini, of de terugval
 lib/groq.ts, lib/mistral.ts    taalmodellen via de chat-API in OpenAI-vorm (lib/openai-chat.ts)
@@ -64,13 +64,13 @@ tests/                         node --test
 4. Het taalmodel (Qwen via Groq; Mistral of Gemini als reserve) krijgt de systeemprompt, de brontekst, de hulpnotities en de opdracht voor die knop, en geeft `{"spoken": "..."}` terug. De server haalt markdown, URL's, emoji en regieaanwijzingen weg.
 5. De pagina laat de presentator die tekst letterlijk uitspreken en toont dezelfde tekst als ondertiteling.
 
-**Een vraag over ander nieuws van vandaag** (lib/questions.ts): het taalmodel meldt bij het antwoord of de vraag over het bericht in beeld ging. Zo niet, dan kiest het taalmodel uit de titels en het begin van de berichten van vandaag het bericht waar de vraag over gaat, en Nova antwoordt uit dát bericht ("Dat gaat over een ander bericht van vandaag."). De pagina gaat naar dat bericht, zodat bron, datum en "Bekijk bron" bij het antwoord horen. Staat het nergens, dan zegt Nova dat eerlijk. Gewone vragen kosten zo geen extra tijd; een vraag over een ander bericht ongeveer 1 seconde extra.
+**Een vraag** (lib/questions.ts): eerst één beslissing. Een taalmodel kiest uit een vaste lijst: over dit bericht, een begrip, een ander bericht (id), een overzicht (Nederland of buitenland, met tijdvak of dag), geen nieuws (onderwerp) of onzeker. De code controleert die JSON streng en doet de rest: welk bericht, welke berichten in een overzicht, welke datum. Een ander bericht: Nova antwoordt uit dát bericht ("Dat gaat over een ander bericht van vandaag.") en de pagina gaat ernaartoe. Geen nieuws: "Ik heb vandaag geen nieuws over Gaza." Dat zegt Nova alleen als het onderwerp ook nergens in de berichten staat. Bij twijfel of een fout antwoordt Nova uit het bericht in beeld. De beslissing gebruikt een ander Groq-model (`CLASSIFY_MODELS`, standaard gpt-oss-120b) dan het antwoord, zodat ze de minuutlimiet niet delen. Een vraag kost zo twee modelaanroepen. Waarom zo: [de review van 4 november 2026](reports/nova-vragen-review-2026-11-04.md). Meten: [evaluation/README.md](evaluation/README.md).
 
 **Volgend bericht** stopt de lopende uitleg, breekt een lopende aanvraag af, wist de context van het vorige bericht en negeert een antwoord dat te laat binnenkomt. Snel dubbelklikken geeft één aanvraag. **Nog een keer** maakt geen nieuwe aanvraag.
 
 ### Inhoud vervangen
 
-De testberichten staan in [data/test-articles.json](data/test-articles.json): id, korte titel, oorspronkelijke titel, uitgever, URL, publicatie- en updatedatum, ophaaldatum, brontekst, en hulpnotities (kernfeiten, voorwaarden, onzekerheden). Vervang of voeg toe met dezelfde velden. De artikelversie rekent de server zelf uit. Een test controleert dat elk getal in de hulpnotities ook in de brontekst staat. Met `NEWS_MODE=live` gebruikt Nova het Nederlandse nieuws van vandaag: de NOS-feeds Binnenland en Politiek (zonder hulpnotities). Overzichten van meerdere onderwerpen ("30/10 in Nieuwsuur: …", de Wekdienst) en podcasts vallen af; Buitenland en Economie (veel buitenlands nieuws) staan uit. Andere feeds: `NEWS_FEEDS`.
+De testberichten staan in [data/test-articles.json](data/test-articles.json): id, korte titel, oorspronkelijke titel, uitgever, URL, publicatie- en updatedatum, ophaaldatum, brontekst, en hulpnotities (kernfeiten, voorwaarden, onzekerheden). Vervang of voeg toe met dezelfde velden. De artikelversie rekent de server zelf uit. Een test controleert dat elk getal in de hulpnotities ook in de brontekst staat. Met `NEWS_MODE=live` gebruikt Nova het Nederlandse nieuws van vandaag: de NOS-feeds Binnenland en Politiek (zonder hulpnotities). Overzichten van meerdere onderwerpen ("30/10 in Nieuwsuur: …", de Wekdienst) en podcasts vallen af; Economie staat uit. Buitenland wordt gelezen, maar alleen voor vragen: niet in de opening of de lijst (`NEWS_FOREIGN_FEEDS=uit` zet het uit). Andere feeds: `NEWS_FEEDS`. `NEWS_MODE=eval` gebruikt de vier vaste, verzonnen berichten uit [evaluation/context.nl.json](evaluation/context.nl.json), om de vragenset af te spelen.
 
 ### Testlog
 
@@ -98,7 +98,7 @@ Anam rekent per minuut sessie. In de ontwikkelmodus wordt Anam niet aangeroepen;
 
 ## Taal en journalistiek
 
-De regels staan in `SYSTEM` in [lib/prompt.ts](lib/prompt.ts), gegroepeerd als rol, taal, opbouw, gesprek, journalistieke zorgvuldigheid, presentatie, veiligheid en antwoordformaat. Verander je de inhoud, verhoog dan `PROMPT_VERSION`. De opdracht per knop staat in `TASKS`. De basisuitleg is 35 tot 50 woorden (was 60 tot 90; dat voelde in de demo te lang): een instelbaar startpunt (`NOVA_CORE_WORDS`), geen onderzoeksuitkomst. Een algemene vraag als "Wat gebeurde er vandaag?" krijgt een kort overzicht van de nieuwste berichten (`OVERVIEW_SYSTEM`, zie [lib/questions.ts](lib/questions.ts)).
+De regels staan in `SYSTEM` in [lib/prompt.ts](lib/prompt.ts), gegroepeerd als rol, taal, opbouw, gesprek, journalistieke zorgvuldigheid, presentatie, veiligheid en antwoordformaat. Verander je de inhoud, verhoog dan `PROMPT_VERSION`. De opdracht per knop staat in `TASKS`. De basisuitleg is 35 tot 50 woorden (was 60 tot 90; dat voelde in de demo te lang): een instelbaar startpunt (`NOVA_CORE_WORDS`), geen onderzoeksuitkomst. De beslissing bij een vraag staat in `CLASSIFY_SYSTEM`, het overzicht in `OVERVIEW_SYSTEM` (zie [lib/questions.ts](lib/questions.ts)).
 
 Valt het taalmodel weg (geen sleutel, quotum, time-out), dan kiest de terugval in [lib/fallback.ts](lib/fallback.ts) zinnen uit de bron. Ze verzint niets, maar herschrijft ook niet. De interface meldt het dan: "De AI werkt nu niet".
 

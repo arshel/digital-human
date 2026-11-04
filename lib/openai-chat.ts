@@ -1,7 +1,7 @@
 // Aanbieders met de chat-API in OpenAI-vorm (Groq, Mistral), met dezelfde functie-vorm als
 // lib/gemini.ts. Alleen server-side importeren: leest de sleutel uit process.env.
 
-import { attemptResult, type Attempt, type Message } from './gemini';
+import { attemptResult, preferred, type Attempt, type GenerateOptions, type Message } from './gemini';
 
 type Options = {
   name: string;
@@ -15,12 +15,17 @@ type Options = {
 };
 
 export function chatProvider({ name, url, keyEnv, models, timeoutMs, extra }: Options) {
-  return async function generateJson(system: string, messages: Message[], attempts: Attempt[] = []): Promise<{ text: string; model: string }> {
+  return async function generateJson(
+    system: string,
+    messages: Message[],
+    attempts: Attempt[] = [],
+    options: GenerateOptions = {},
+  ): Promise<{ text: string; model: string }> {
     const key = process.env[keyEnv];
     if (!key) throw new Error(`${keyEnv} ontbreekt in .env.local`);
 
     const errors: string[] = [];
-    for (const model of models) {
+    for (const model of preferred(models, options.prefer)) {
       const started = Date.now();
       try {
         const text = await call(model, key);
@@ -41,7 +46,7 @@ export function chatProvider({ name, url, keyEnv, models, timeoutMs, extra }: Op
         body: JSON.stringify({
           model,
           messages: [{ role: 'system', content: system }, ...messages],
-          temperature: 0.4,
+          temperature: options.temperature ?? 0.4,
           max_tokens: 2048,
           response_format: { type: 'json_object' },
           ...extra?.(model),
