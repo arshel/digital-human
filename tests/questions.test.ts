@@ -251,6 +251,8 @@ describe('de lijst om uit te kiezen', () => {
     assert.equal(topicMentioned('Oekraïne', ARTICLES), true);
     assert.equal(topicMentioned('Gaza', ARTICLES), false);
     assert.equal(topicMentioned('EU', ARTICLES), false, 'te kort om te controleren');
+    assert.equal(topicMentioned('cijfers van Volkswagen', ARTICLES), true, 'alle woorden in hetzelfde bericht');
+    assert.equal(topicMentioned('cijfers van Bhutan', ARTICLES), false, 'één woord in een bericht is niet genoeg');
     assert.equal(topicMentioned(null, ARTICLES), false);
   });
 });

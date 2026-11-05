@@ -218,14 +218,15 @@ export function candidates(articles: NewsArticle[], currentId: string, now = Dat
     }));
 }
 
-// Staat het onderwerp toch ergens in de berichten? Dan zegt Nova niet "geen nieuws": het model kan
-// een bericht gemist hebben. Woorden van 4 letters of meer, zonder hoofdlettergevoeligheid.
+// Staat het onderwerp toch in een bericht? Dan zegt Nova niet "geen nieuws": het model kan een
+// bericht gemist hebben. Alle woorden van 4 letters of meer moeten in hetzelfde bericht staan:
+// "verkiezingen in Bhutan" telt niet omdat er een bericht over andere verkiezingen is.
 export function topicMentioned(topic: string | null, articles: { title: string; body: string }[]) {
   const words = (topic ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 4);
   if (!words.length) return false;
   return articles.some((a) => {
     const text = `${a.title} ${a.body}`.toLowerCase();
-    return words.some((w) => text.includes(w));
+    return words.every((w) => text.includes(w));
   });
 }
 

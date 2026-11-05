@@ -3,7 +3,7 @@ import type { NewsArticle } from './articles';
 // De systeemprompt van Nova, op één plek. Alleen server-side. Verander je hier iets aan de
 // inhoud, verhoog dan PROMPT_VERSION: elk antwoord en het testlog dragen die versie, zodat je
 // achteraf weet op welke regels een antwoord was gebaseerd.
-export const PROMPT_VERSION = '2026-11-04.5';
+export const PROMPT_VERSION = '2026-11-04.6';
 
 // Lengte van de basisuitleg in woorden. Een instelbaar startpunt voor het prototype, geen
 // onderzoeksuitkomst en geen harde grens. Aanpassen met NOVA_CORE_WORDS=35-50.
@@ -119,6 +119,7 @@ Kies precies één soort:
 - "geen_match": de vraag noemt een onderwerp, land, plaats of gebeurtenis, en geen enkel bericht gaat daarover, ook het bericht in beeld niet. Zet het onderwerp in "onderwerp", in 1 tot 4 woorden, zoals het past na "geen nieuws over". Bijvoorbeeld "Gaza" of "de Olympische Spelen".
 - "onzeker": je kunt het niet goed bepalen.
 
+Een naam of plaats kan anders gespeld zijn, of verkeerd verstaan als de vraag is ingesproken. Kiev en Kyiv zijn dezelfde stad, "kongres" is "Congres". Kies dan het bericht daarover.
 Let op het verschil: "wat is nieuws?" vraagt wat een woord betekent, dus "begrip". "Wat is het nieuws?" vraagt naar het nieuws, dus "overzicht".
 Kies alleen "geen_match" als je zeker weet dat geen enkel bericht erover gaat. Twijfel je? Kies "onzeker".
 
