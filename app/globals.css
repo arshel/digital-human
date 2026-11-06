@@ -198,6 +198,91 @@ html:has(dialog[open]) {
   object-fit: contain;
   object-position: 50% 50%;
 }
+/* ---------- Nova vrijstaand voor de nieuwsafbeelding (greenscreen, lib/greenscreen.ts) ---------- */
+/* Het vak is een container: Nova staat op de computer anders dan op de telefoon, naar de breedte van
+   het vak zelf (zo werkt het ook in de testpagina met twee vakken naast elkaar). */
+.frame.is-keyed {
+  container: frame / inline-size;
+}
+/* De afbeelding van het bericht vult het vak. Zonder afbeelding: een rustige achtergrond. */
+.news-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 90% at 30% 20%, #3c5a73 0%, transparent 60%),
+    linear-gradient(160deg, #22394d 0%, #142333 100%);
+}
+.news-backdrop > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* Onderaan donkerder voor de ondertiteling, en iets rustiger achter Nova. */
+.news-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to top, #0c1527b0 0%, #0c152740 28%, transparent 50%),
+    linear-gradient(to left, #0c152740 0%, transparent 45%);
+  pointer-events: none;
+}
+.news-backdrop-credit {
+  position: absolute;
+  z-index: 2;
+  top: 1rem;
+  right: 1.25rem;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: #fff;
+  background: #0c1527c0;
+  border-radius: 0.25rem;
+}
+.frame:has(.sim-label) .news-backdrop-credit {
+  top: 3rem;
+}
+/* De bron van het canvas (Anam-video, wachtvideo, stilstaand beeld): in de pagina, maar onzichtbaar.
+   Niet display: none, anders speelt de video niet of niet met geluid. */
+.frame-source {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+/* Nova zelf. Breedte volgt uit de hoogte en de verhoudingen van de bron. */
+.nova-layer {
+  position: absolute;
+  display: block;
+  width: auto;
+  max-width: none;
+  height: var(--nova-d-height, 60%);
+  left: var(--nova-d-left, auto);
+  right: var(--nova-d-right, -8%);
+  bottom: var(--nova-d-bottom, 0%);
+  transform: translateX(var(--nova-d-shift, 0%));
+  pointer-events: none;
+}
+@container frame (max-width: 46rem) {
+  .nova-layer {
+    height: var(--nova-m-height, 70%);
+    left: var(--nova-m-left, calc(50% + 0%));
+    right: var(--nova-m-right, auto);
+    bottom: var(--nova-m-bottom, 0%);
+    transform: translateX(var(--nova-m-shift, -50%));
+  }
+  .news-backdrop-credit {
+    top: 0.65rem;
+    right: 0.75rem;
+  }
+  .frame:has(.sim-label) .news-backdrop-credit {
+    top: 2.2rem;
+  }
+}
 .frame-media[hidden] {
   display: none;
 }

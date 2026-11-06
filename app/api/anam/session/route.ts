@@ -1,4 +1,5 @@
 import { AVATAR_MODE } from '@/lib/config';
+import { sessionAvatarId } from '@/lib/greenscreen';
 import { rateLimited, tooMany } from '@/lib/ratelimit';
 
 // Sessie-token voor de Anam-avatar, pas na "Start" opgevraagd. ANAM_API_KEY blijft hier op de
@@ -15,8 +16,12 @@ export async function POST(req: Request) {
   if (AVATAR_MODE !== 'anam') {
     return Response.json({ error: 'De Anam-avatar staat uit (AVATAR_MODE is niet "anam").' }, { status: 409 });
   }
+  // De greenscreenversie van Nova alleen als de pagina erom vraagt (die kan haar dan vrijstaand
+  // tonen) én die is ingesteld (lib/greenscreen.ts). Anders de gewone avatar.
+  const body: unknown = await req.json().catch(() => null);
+  const wantsGreenscreen = !!body && typeof body === 'object' && (body as { greenscreen?: unknown }).greenscreen === true;
   const key = process.env.ANAM_API_KEY;
-  const avatarId = process.env.ANAM_AVATAR_ID;
+  const avatarId = sessionAvatarId(wantsGreenscreen, process.env);
   const voiceId = process.env.ANAM_VOICE_ID;
   if (!key || !avatarId || !voiceId) {
     console.error('[anam] ANAM_API_KEY, ANAM_AVATAR_ID of ANAM_VOICE_ID ontbreekt in .env.local');

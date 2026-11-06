@@ -1,0 +1,72 @@
+/* Alleen de testpagina /greenscreen-test. De vakken zelf gebruiken de echte CSS (globals.css). */
+.lab {
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+  background: var(--paper, #fffcf8);
+  min-height: 100vh;
+}
+.lab h1 {
+  font-size: 1.25rem;
+}
+.lab-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+}
+.lab-controls button {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid #a4bdf0;
+  border-radius: 0.4rem;
+  background: #edf3ff;
+}
+.lab-slider {
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.75rem;
+}
+.lab-frames {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+}
+.lab-figure {
+  margin: 0;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+}
+.lab .frame {
+  flex: none;
+  max-width: 100%;
+}
+.lab-caption {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  padding: 0.5rem 0.8rem;
+  border-radius: 0.6rem;
+  background: #0c1527ef;
+  color: #fff;
+  font-size: 1rem;
+  text-align: center;
+}
+.lab-hidden {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 2px;
+  opacity: 0;
+  pointer-events: none;
+}
+.lab-settings {
+  font-size: 0.7rem;
+  white-space: pre-wrap;
+}

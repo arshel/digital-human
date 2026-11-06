@@ -2,6 +2,7 @@ import { getArticles, meta, NEWS_MODE } from '@/lib/articles';
 import { after } from 'next/server';
 import { aiProviders, generateExplanation } from '@/lib/ai';
 import { AVATAR_MODE, DEV_TOOLS } from '@/lib/config';
+import { greenscreenConfig } from '@/lib/greenscreen';
 import { warmCores } from '@/lib/corecache';
 import { PROMPT_VERSION } from '@/lib/prompt';
 
@@ -26,6 +27,8 @@ export async function GET() {
     // Nova na Start begint.
     poster: process.env.ANAM_POSTER_URL || '/anam/nova.webp',
     idleVideo: AVATAR_MODE === 'anam' ? process.env.ANAM_IDLE_VIDEO_URL || '/anam/nova-idle.mp4' : null,
+    // Nova vrijstaand voor de nieuwsafbeelding (lib/greenscreen.ts). null: de gewone weergave.
+    greenscreen: greenscreenConfig(process.env, AVATAR_MODE),
     // Zijn het demo-artikelen (feed onbereikbaar), dan geen berichten: die tonen we niet als nieuws.
     articles: live ? articles.map(meta) : [],
   });

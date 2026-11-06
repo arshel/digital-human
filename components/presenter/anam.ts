@@ -79,6 +79,9 @@ const FIRST_FRAME_MS = 5000;
 export class AnamPresenter implements Presenter {
   readonly canListen = true;
   private video: HTMLVideoElement;
+  // De greenscreenversie van Nova vragen (lib/greenscreen.ts): alleen als de pagina die vrijstaand
+  // kan tonen (WebGL werkt). De server beslist of die er is; anders de gewone avatar.
+  greenscreen = false;
   private events: PresenterEvents;
   private deps: AnamDeps;
   private client: AnamClient | null = null; // verbonden en bruikbaar
@@ -141,7 +144,11 @@ export class AnamPresenter implements Presenter {
     this.events.onState('connecting');
     this.mark('connect-start');
     try {
-      const res = await this.deps.fetch('/api/anam/session', { method: 'POST' });
+      const res = await this.deps.fetch('/api/anam/session', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ greenscreen: this.greenscreen }),
+      });
       const data = await res.json().catch(() => null);
       if (!current()) return false;
       if (!res.ok || !data?.sessionToken) throw new Error(data?.error ?? 'De avatar kan nu niet starten.');

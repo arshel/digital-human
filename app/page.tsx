@@ -13,7 +13,10 @@ import {
   type ReactNode,
 } from "react";
 import { Panel } from "@/components/Panel";
+import { GreenScreenCanvas } from "@/components/GreenScreenCanvas";
+import { NewsBackdrop } from "@/components/NewsBackdrop";
 import { PresenterBackdrop } from "@/components/PresenterBackdrop";
+import { webglAvailable } from "@/components/presenter/greenscreen";
 import { usePresenter } from "@/components/presenter/usePresenter";
 import { CycleTiming, type TimingReport } from "@/components/presenter/timing";
 import type { ListenState, TimingEvent } from "@/components/presenter/types";
@@ -38,6 +41,7 @@ import { splitSentences } from "@/lib/spoken";
 import type { ArticleMeta } from "@/lib/articles";
 import { linkWords, spokenExplanation, type HardWord, type Segment } from "@/lib/words";
 import type { Action, Previous } from "@/lib/prompt";
+import { layoutVars, type GreenscreenConfig } from "@/lib/greenscreen";
 
 // Alle state van het prototype staat hier. De presentator (gesimuleerd of Anam) zit achter
 // usePresenter; deze pagina weet alleen wat die doet, niet hoe.
@@ -49,6 +53,8 @@ type Config = {
   promptVersion: string;
   poster: string | null;
   idleVideo: string | null;
+  // Nova vrijstaand voor de nieuwsafbeelding (lib/greenscreen.ts). null: de gewone weergave.
+  greenscreen: GreenscreenConfig | null;
   articles: ArticleMeta[];
 };
 
@@ -173,7 +179,25 @@ export default function Page() {
     setHeard(text);
     askRef.current(text);
   }, []);
-  const presenter = usePresenter(config?.avatarMode ?? null, preparing !== null, onTiming, onHeard);
+  // Nova vrijstaand (greenscreen): alleen als het is ingesteld, WebGL werkt en het niet mislukte.
+  // Anders de gewone weergave. Mislukt het tijdens een stream met de greenscreen-avatar, dan staat
+  // Nova tot de volgende verbinding als rechthoek met groen in beeld; daarna de gewone avatar.
+  const [webgl, setWebgl] = useState<boolean | null>(null);
+  const [keyFailed, setKeyFailed] = useState(false);
+  useEffect(() => setWebgl(webglAvailable()), []);
+  const greenscreen = config?.greenscreen ?? null;
+  const keyed = !!greenscreen && webgl === true && !keyFailed;
+  const keyFail = useCallback((reason: string) => {
+    console.warn("[greenscreen] terug naar de gewone weergave:", reason);
+    setKeyFailed(true);
+  }, []);
+  const layoutStyle = useMemo(
+    () => (greenscreen ? (layoutVars(greenscreen.layout) as CSSProperties) : undefined),
+    [greenscreen],
+  );
+  const restVideo = useRef<HTMLVideoElement>(null);
+  const restImage = useRef<HTMLImageElement>(null);
+  const presenter = usePresenter(config?.avatarMode ?? null, preparing !== null, onTiming, onHeard, keyed);
   // Een echte avatar (Anam): video in beeld, tekst pas als Nova praat, metingen.
   const realAvatar = config?.avatarMode === "anam";
 
@@ -602,23 +626,84 @@ export default function Page() {
       <main className={`layout${started ? " is-started" : ""}`}>
         <section className="stage" aria-label="Presentator">
           {article && <h1 className="stage-title">{article.shortTitle}</h1>}
-          <div className="frame">
-            <PresenterBackdrop poster={config?.poster ?? null} />
+          <div className={`frame${keyed ? " is-keyed" : ""}`} style={keyed ? layoutStyle : undefined}>
+            {keyed && greenscreen ? (
+              <NewsBackdrop
+                image={article?.image ?? null}
+                publisher={article?.publisher ?? null}
+                focus={greenscreen.backgroundFocus}
+              />
+            ) : (
+              <PresenterBackdrop poster={config?.poster ?? null} />
+            )}
             {showVideo && (
               <video
                 ref={presenter.video}
-                className="frame-media"
+                className={keyed ? "frame-source" : "frame-media"}
                 autoPlay
                 playsInline
                 disablePictureInPicture
-                aria-hidden={!live}
+                aria-hidden={keyed || !live}
                 aria-label="Nova, de AI-presentator"
               />
+            )}
+            {/* Vrijstaand: de video hierboven is onzichtbaar (die speelt het geluid af), dit canvas
+                tekent hem zonder groen. Pas zichtbaar als er beeld is. */}
+            {showVideo && keyed && greenscreen && (
+              <GreenScreenCanvas
+                className="nova-layer"
+                // Pas zichtbaar als Nova live is: een stream zonder beeld zou een zwart vlak geven.
+                style={{ opacity: live ? 1 : 0, transition: `opacity ${REST_FADE_MS}ms ease` }}
+                source={() => presenter.video.current}
+                keySettings={greenscreen.key}
+                label={live ? "Nova, de AI-presentator" : undefined}
+                onFail={keyFail}
+              />
+            )}
+            {/* Vrijstaand wachtbeeld: dezelfde compositie als het live beeld, en het vervaagt op
+                dezelfde manier. Het stilstaande beeld tot de wachtvideo een beeld heeft. */}
+            {keyed && greenscreen && !restGone && (
+              <>
+                <img
+                  ref={restImage}
+                  className="frame-source"
+                  src={greenscreen.poster}
+                  crossOrigin="anonymous"
+                  alt=""
+                  aria-hidden="true"
+                  onError={() => keyFail("stilstaand greenscreenbeeld laadt niet")}
+                />
+                {greenscreen.idleVideo && (
+                  <video
+                    ref={restVideo}
+                    className="frame-source"
+                    src={greenscreen.idleVideo}
+                    crossOrigin="anonymous"
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    disablePictureInPicture
+                    aria-hidden="true"
+                  />
+                )}
+                <GreenScreenCanvas
+                  className="nova-layer"
+                  style={restFade}
+                  source={() => {
+                    const v = restVideo.current;
+                    return v && v.readyState >= 2 ? v : restImage.current;
+                  }}
+                  keySettings={greenscreen.key}
+                  label={live ? undefined : "Nova, de AI-presentator"}
+                  onFail={keyFail}
+                />
+              </>
             )}
             {/* Vóór Start: de wachtvideo van de avatar (een gewoon videobestand, geen stream en geen
                 kosten), zodat de presentator al beweegt. Anders de foto. Die ligt óver het live
                 beeld en vervaagt pas als dat er is: geen harde wissel tussen bestand en stream. */}
-            {!restGone &&
+            {!keyed && !restGone &&
               (config?.idleVideo ? (
                 <video
                   className="frame-media"
@@ -654,7 +739,7 @@ export default function Page() {
             )}
             {/* De afbeelding van het bericht schuin boven Nova's schouder, zoals bij het journaal.
                 Een nieuw bericht (key) laat de afbeelding opnieuw invloeien. */}
-            {article?.image && (
+            {!keyed && article?.image && (
               <figure key={article.id} className="frame-ots" aria-hidden="true">
                 <img src={article.image} alt="" referrerPolicy="no-referrer" />
                 <figcaption>{article.publisher}</figcaption>
