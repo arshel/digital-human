@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { DEFAULT_FEEDS, feedHasVideo, feedImage, feedUrls, foreignFeedUrls, isNewsItem, mergeFeeds } from '../lib/feeds.ts';
-import { isNosPage, streamFromPage } from '../lib/video.ts';
+import { DEFAULT_FEEDS, feedImage, feedUrls, foreignFeedUrls, isNewsItem, mergeFeeds } from '../lib/feeds.ts';
 
 // Nederlands nieuws: welke feeds, en wat is een nieuwsbericht. Voorbeelden uit de NOS-feeds van
 // 30 oktober 2026.
@@ -68,22 +67,5 @@ describe('afbeelding bij een bericht', () => {
 
   it('&amp; in het adres wordt &', () => {
     assert.equal(feedImage('<item><enclosure url="https://x.nl/a.jpg?w=1&amp;h=2" type="image/jpeg"/></item>'), 'https://x.nl/a.jpg?w=1&h=2');
-  });
-});
-
-describe('NOS-video (test)', () => {
-  it('een videobericht herkennen aan de duur in de feed', () => {
-    assert.equal(feedHasVideo('<item><title>x</title><itunes:duration>00:00:44</itunes:duration></item>'), true);
-    assert.equal(feedHasVideo('<item><title>x</title></item>'), false);
-  });
-
-  it('het streamadres uit een NOS-pagina; alleen van de streamingdienst van de NOS', () => {
-    const good = 'https://resolver.streaming.api.nos.nl/stream?stream=NOSC_1&profile=hls_unencrypted&policy=abc';
-    const escaped = good.replace(/&/g, '\\u0026').replace(/\//g, '\\/');
-    assert.equal(streamFromPage(`<script>{"@type":"VideoObject","contentUrl":"${escaped}"}</script>`), good);
-    assert.equal(streamFromPage('{"contentUrl":"https://example.com/stream?x=1"}'), null);
-    assert.equal(streamFromPage('<html>geen video</html>'), null);
-    assert.equal(isNosPage('https://nos.nl/l/2639119'), true);
-    assert.equal(isNosPage('https://nos.nl.evil.com/l/1'), false);
   });
 });

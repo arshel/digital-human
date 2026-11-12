@@ -212,17 +212,12 @@ html:has(dialog[open]) {
     radial-gradient(120% 90% at 30% 20%, #3c5a73 0%, transparent 60%),
     linear-gradient(160deg, #22394d 0%, #142333 100%);
 }
-.news-backdrop > img,
-.news-backdrop > video {
+.news-backdrop > img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-/* De NOS-video (test): over de afbeelding heen zodra die speelt. */
-.news-backdrop-video {
-  transition: opacity 600ms ease;
 }
 /* Onderaan donkerder voor de ondertiteling, en iets rustiger achter Nova. */
 .news-backdrop::after {

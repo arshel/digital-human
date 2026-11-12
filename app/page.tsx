@@ -675,7 +675,6 @@ export default function Page() {
                 image={article?.image ?? null}
                 publisher={article?.publisher ?? null}
                 focus={greenscreen.backgroundFocus}
-                videoId={article?.video ? article.id : null}
               />
             ) : (
               <PresenterBackdrop poster={config?.poster ?? null} />

@@ -1,5 +1,5 @@
 import demoArticles from '@/data/articles.json';
-import { feedHasVideo, feedImage, feedUrls, foreignFeedUrls, mergeFeeds, type Region } from './feeds';
+import { feedImage, feedUrls, foreignFeedUrls, mergeFeeds, type Region } from './feeds';
 
 export type Article = {
   id: string;
@@ -13,8 +13,6 @@ export type Article = {
   image: string | null;
   // Nederlands nieuws, of buitenlands nieuws (alleen voor vragen, zie lib/feeds.ts).
   region: Region;
-  // Er hoort een NOS-video bij (de videofeed); de stream zoekt lib/video.ts op.
-  video?: boolean;
 };
 
 export type StorySet = { stories: Article[]; live: boolean };
@@ -110,7 +108,6 @@ export function parseFeed(xml: string, source: string, region: Region = 'nl'): A
       body,
       image: feedImage(item),
       region,
-      video: feedHasVideo(item),
     }];
   });
 }
