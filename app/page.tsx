@@ -17,6 +17,7 @@ import { GreenScreenCanvas } from "@/components/GreenScreenCanvas";
 import { NewsBackdrop } from "@/components/NewsBackdrop";
 import { PresenterBackdrop } from "@/components/PresenterBackdrop";
 import { webglAvailable } from "@/components/presenter/greenscreen";
+import { IdleComposite } from "@/components/presenter/idleComposite";
 import { usePresenter } from "@/components/presenter/usePresenter";
 import { CycleTiming, type TimingReport } from "@/components/presenter/timing";
 import type { ListenState, TimingEvent } from "@/components/presenter/types";
@@ -41,7 +42,7 @@ import { splitSentences } from "@/lib/spoken";
 import type { ArticleMeta } from "@/lib/articles";
 import { linkWords, spokenExplanation, type HardWord, type Segment } from "@/lib/words";
 import type { Action, Previous } from "@/lib/prompt";
-import { layoutVars, type GreenscreenConfig } from "@/lib/greenscreen";
+import { layoutVars, variantOrientation, VIDEO_SIZE, type GreenscreenConfig } from "@/lib/greenscreen";
 
 // Alle state van het prototype staat hier. De presentator (gesimuleerd of Anam) zit achter
 // usePresenter; deze pagina weet alleen wat die doet, niet hoe.
@@ -75,7 +76,18 @@ type Fragment = {
 const REST_FADE_MS = 450;
 
 type Problem = { message: string; retry?: () => void };
-type PanelName = "ask" | "source" | "help" | "access" | "news" | "dev";
+type PanelName = "ask" | "source" | "help" | "access" | "news" | "dev" | "chat";
+
+// Het gesprek zoals de gebruiker het kan teruglezen: vragen en antwoorden, met het bericht erbij.
+// Alleen in de pagina; niet opgeslagen en niet naar de server.
+type Turn = { id: number; who: "jij" | "nova"; text: string; articleId: string; title: string; label?: string };
+const MAX_TURNS = 40;
+const TURN_LABELS: Partial<Record<Action, string>> = {
+  core: "Kern",
+  simpler: "Makkelijker uitgelegd",
+  meaning: "Wat betekent dit?",
+  more: "Meer achtergrond",
+};
 type Simulate = "" | "gemini-error" | "server-error";
 
 // De drie uitlegknoppen. De opdracht per knop staat in lib/prompt.ts.
@@ -125,6 +137,11 @@ export default function Page() {
   const [started, setStarted] = useState(false);
   const [fragment, setFragment] = useState<Fragment | null>(null);
   const [history, setHistory] = useState<Previous[]>([]);
+  const [conversation, setConversation] = useState<Turn[]>([]);
+  const turnId = useRef(0);
+  const addTurn = useCallback((turn: Omit<Turn, "id">) => {
+    setConversation((list) => [...list, { ...turn, id: ++turnId.current }].slice(-MAX_TURNS));
+  }, []);
   const [preparing, setPreparing] = useState<Action | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [captions, setCaptions] = useState(true);
@@ -184,20 +201,38 @@ export default function Page() {
   // Nova tot de volgende verbinding als rechthoek met groen in beeld; daarna de gewone avatar.
   const [webgl, setWebgl] = useState<boolean | null>(null);
   const [keyFailed, setKeyFailed] = useState(false);
-  useEffect(() => setWebgl(webglAvailable()), []);
+  useEffect(() => {
+    setWebgl(webglAvailable());
+  }, []);
   const greenscreen = config?.greenscreen ?? null;
   const keyed = !!greenscreen && webgl === true && !keyFailed;
+  // Welke greenscreenvariant (lib/greenscreen.ts): ?avatar= in de adresbalk, anders de standaard.
+  // Kiezen bij Testopties laadt de pagina opnieuw: de volgende sessie begint met die avatar.
+  const [avatarParam, setAvatarParam] = useState<string | null>(null);
+  useEffect(() => {
+    setAvatarParam(new URLSearchParams(window.location.search).get("avatar"));
+  }, []);
+  const variant =
+    greenscreen?.variants.find((v) => v.id === avatarParam) ??
+    greenscreen?.variants.find((v) => v.id === greenscreen.variant) ??
+    null;
   const keyFail = useCallback((reason: string) => {
     console.warn("[greenscreen] terug naar de gewone weergave:", reason);
     setKeyFailed(true);
   }, []);
+  // Staand (meer van Nova in beeld) als dat is ingesteld en de variant een staand beeld heeft.
+  // De sessie krijgt dan ook een staande stream (lib/greenscreen.ts, sessionVideoSize).
+  const staand = !!greenscreen && variantOrientation(greenscreen, variant) === "staand";
+  const novaSize = VIDEO_SIZE[staand ? "staand" : "liggend"];
   const layoutStyle = useMemo(
-    () => (greenscreen ? (layoutVars(greenscreen.layout) as CSSProperties) : undefined),
-    [greenscreen],
+    () => (greenscreen ? (layoutVars(staand ? greenscreen.layoutStaand : greenscreen.layout) as CSSProperties) : undefined),
+    [greenscreen, staand],
   );
+  // Staand: de liggende wachtvideo samen met het staande stilstaande beeld (idleComposite.ts).
+  const idleComposite = useRef<IdleComposite | null>(null);
   const restVideo = useRef<HTMLVideoElement>(null);
   const restImage = useRef<HTMLImageElement>(null);
-  const presenter = usePresenter(config?.avatarMode ?? null, preparing !== null, onTiming, onHeard, keyed);
+  const presenter = usePresenter(config?.avatarMode ?? null, preparing !== null, onTiming, onHeard, keyed, variant?.id ?? null);
   // Een echte avatar (Anam): video in beeld, tekst pas als Nova praat, metingen.
   const realAvatar = config?.avatarMode === "anam";
 
@@ -377,6 +412,13 @@ export default function Page() {
         sentences: splitSentences(data.spoken),
       };
       setHistory([...context, { action, spoken: data.spoken }].slice(-6));
+      addTurn({
+        who: "nova",
+        text: data.spoken,
+        articleId: data.articleId,
+        title: shown.current.articles.find((a) => a.id === data.articleId)?.shortTitle ?? target.shortTitle,
+        label: data.overview ? "Overzicht van het nieuws" : TURN_LABELS[action],
+      });
       cycleTiming.current.text(mine, performance.now(), { requestId: data.requestId, ...data.timing });
       if (inflight.current === controller) inflight.current = null;
       setPreparing(null);
@@ -508,6 +550,7 @@ export default function Page() {
     if (!started) setStarted(true);
     setPanel(null);
     setDraft("");
+    addTurn({ who: "jij", text: question, articleId: article.id, title: article.shortTitle });
     explain(article, "question", question, started ? history : []);
   }
   askRef.current = ask;
@@ -632,6 +675,7 @@ export default function Page() {
                 image={article?.image ?? null}
                 publisher={article?.publisher ?? null}
                 focus={greenscreen.backgroundFocus}
+                videoId={article?.video ? article.id : null}
               />
             ) : (
               <PresenterBackdrop poster={config?.poster ?? null} />
@@ -655,6 +699,8 @@ export default function Page() {
                 // Pas zichtbaar als Nova live is: een stream zonder beeld zou een zwart vlak geven.
                 style={{ opacity: live ? 1 : 0, transition: `opacity ${REST_FADE_MS}ms ease` }}
                 source={() => presenter.video.current}
+                width={novaSize.width}
+                height={novaSize.height}
                 keySettings={greenscreen.key}
                 label={live ? "Nova, de AI-presentator" : undefined}
                 onFail={keyFail}
@@ -667,17 +713,17 @@ export default function Page() {
                 <img
                   ref={restImage}
                   className="frame-source"
-                  src={greenscreen.poster}
+                  src={(staand ? variant?.posterStaand : variant?.poster) ?? greenscreen.poster}
                   crossOrigin="anonymous"
                   alt=""
                   aria-hidden="true"
                   onError={() => keyFail("stilstaand greenscreenbeeld laadt niet")}
                 />
-                {greenscreen.idleVideo && (
+                {(variant ? variant.idleVideo : greenscreen.idleVideo) && (
                   <video
                     ref={restVideo}
                     className="frame-source"
-                    src={greenscreen.idleVideo}
+                    src={(variant ? variant.idleVideo : greenscreen.idleVideo) ?? undefined}
                     crossOrigin="anonymous"
                     autoPlay
                     muted
@@ -690,8 +736,11 @@ export default function Page() {
                 <GreenScreenCanvas
                   className="nova-layer"
                   style={restFade}
+                  width={novaSize.width}
+                  height={novaSize.height}
                   source={() => {
                     const v = restVideo.current;
+                    if (staand) return (idleComposite.current ??= new IdleComposite()).draw(restImage.current, v);
                     return v && v.readyState >= 2 ? v : restImage.current;
                   }}
                   keySettings={greenscreen.key}
@@ -922,6 +971,11 @@ export default function Page() {
                   Lees volledige tekst
                   <MoreIcon />
                 </button>
+                {conversation.length > 0 && (
+                  <button type="button" className="transcript-toggle" onClick={() => setPanel("chat")}>
+                    Gesprek ({conversation.filter((t) => t.who === "jij").length || conversation.length})
+                  </button>
+                )}
                 {fragment.mode === "fallback" && (
                   <p className="captions-note">
                     De AI werkt nu niet. Je hoort zinnen uit het bericht zelf.
@@ -1015,13 +1069,18 @@ export default function Page() {
               Bron
             </button>
           )}
+          {/* Op de telefoon: het gesprek (met daarin ook de volledige tekst van het laatste antwoord). */}
           {fragment && (
             <button
               type="button"
               className="btn btn-quiet mobile-transcript"
-              onClick={() => setTranscript(true)}
+              onClick={() => (conversation.length ? setPanel("chat") : setTranscript(true))}
             >
-              <span aria-label="Volledige tekst">Tekst</span>
+              {conversation.length ? (
+                <span>Gesprek</span>
+              ) : (
+                <span aria-label="Volledige tekst">Tekst</span>
+              )}
             </button>
           )}
           <button
@@ -1043,6 +1102,9 @@ export default function Page() {
           )}
         </div>
       </footer>
+      <Panel open={panel === "chat"} onClose={close} title="Gesprek met Nova">
+        <Conversation turns={conversation} />
+      </Panel>
       <Panel open={panel === "news"} onClose={close} title="Ander nieuws">
         <section className="today" aria-labelledby="today-title">
           <div className="section-heading">
@@ -1302,6 +1364,34 @@ export default function Page() {
 }
 
 // Alleen voor ontwikkelaars: foutsimulatie, versies van het laatste antwoord en het verbruik.
+// Het gesprek: per bericht een kopje, dan de vragen en antwoorden. Bij openen naar het laatste.
+function Conversation({ turns }: { turns: Turn[] }) {
+  const end = useRef<HTMLDivElement>(null);
+  // Met accolades: nieuwere Chrome-versies geven bij scrollIntoView een Promise terug, en een effect
+  // mag alleen een opruimfunctie teruggeven.
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [turns.length]);
+  return (
+    <div className="conversation">
+      <p className="conversation-note">Nova is een AI. Nova vertelt alleen wat in de berichten van de NOS staat.</p>
+      {turns.map((t, i) => (
+        <div key={t.id}>
+          {turns[i - 1]?.articleId !== t.articleId && <h3 className="conversation-topic">{t.title}</h3>}
+          <div className={`turn turn-${t.who}`}>
+            <span className="turn-who">
+              {t.who === "jij" ? "Jij" : "Nova"}
+              {t.label && <span className="turn-label"> · {t.label}</span>}
+            </span>
+            <p>{t.text}</p>
+          </div>
+        </div>
+      ))}
+      <div ref={end} />
+    </div>
+  );
+}
+
 function DevPanel({
   config,
   fragment,
@@ -1335,6 +1425,32 @@ function DevPanel({
         </dd>
         <dt>Presentator</dt>
         <dd>{presenterState}</dd>
+        {config.greenscreen && config.greenscreen.variants.length > 1 && (
+          <>
+            <dt>Nova-variant</dt>
+            <dd>
+              {/* Anam wisselt niet midden in een sessie: kiezen laadt de pagina opnieuw. */}
+              <select
+                aria-label="Nova-variant"
+                defaultValue={
+                  new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).get("avatar") ??
+                  config.greenscreen.variant
+                }
+                onChange={(e) => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("avatar", e.target.value);
+                  window.location.assign(url);
+                }}
+              >
+                {config.greenscreen.variants.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            </dd>
+          </>
+        )}
         <dt>Promptversie</dt>
         <dd>{fragment?.promptVersion ?? config.promptVersion}</dd>
         {fragment && (

@@ -14,6 +14,8 @@ export function GreenScreenCanvas({
   style,
   label,
   onFail,
+  width = 1152,
+  height = 768,
 }: {
   source: () => Source | null;
   keySettings: KeySettings;
@@ -21,6 +23,9 @@ export function GreenScreenCanvas({
   style?: CSSProperties;
   label?: string;
   onFail: (reason: string) => void;
+  // Beginmaat: die van de bron die komt (liggend of staand).
+  width?: number;
+  height?: number;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const renderer = useRef<GreenScreenRenderer | null>(null);
@@ -57,8 +62,8 @@ export function GreenScreenCanvas({
       ref={canvas}
       // Beginmaat als de Anam-stream (3:2), zodat de opmaak niet verspringt bij het eerste beeld.
       // Daarna neemt de renderer de maat van de bron over.
-      width={1152}
-      height={768}
+      width={width}
+      height={height}
       className={className}
       style={style}
       role={label ? "img" : undefined}

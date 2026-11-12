@@ -59,6 +59,32 @@ function outgoingAudio(): OutgoingAudio {
   };
 }
 
+// Foutcodes van de Anam-SDK (ClientError.code) die de gebruiker iets zeggen. De rest wordt
+// "Verbinding mislukt". De code zelf gaat naar de serverlog (alleen ontwikkelserver).
+const CONNECT_MESSAGES: Record<string, string> = {
+  CLIENT_ERROR_CODE_USAGE_LIMIT_REACHED: 'De minuten bij Anam zijn op. Nova kan nu niet live praten.',
+  CLIENT_ERROR_CODE_NO_PLAN_FOUND: 'De minuten bij Anam zijn op. Nova kan nu niet live praten.',
+  CLIENT_ERROR_CODE_SPEND_CAP_REACHED: 'De uitgavelimiet bij Anam is bereikt. Nova kan nu niet live praten.',
+  CLIENT_ERROR_CODE_MAX_CONCURRENT_SESSIONS_REACHED: 'Nova praat al in een ander tabblad. Sluit dat en probeer opnieuw.',
+  CLIENT_ERROR_CODE_SERVICE_BUSY: 'De avatar is nu druk. Probeer het zo opnieuw.',
+};
+
+function errorCode(err: unknown): string | null {
+  const code = err && typeof err === 'object' ? (err as { code?: unknown }).code : null;
+  return typeof code === 'string' ? code.slice(0, 60) : null;
+}
+
+function errorStatus(err: unknown): number | null {
+  const status = err && typeof err === 'object' ? (err as { statusCode?: unknown }).statusCode : null;
+  return typeof status === 'number' ? status : null;
+}
+
+export function connectMessage(err: unknown): string {
+  const known = CONNECT_MESSAGES[errorCode(err) ?? ''];
+  if (known) return known;
+  return err instanceof Error && err.message.startsWith('De ') ? err.message : 'Verbinding mislukt. Probeer opnieuw.';
+}
+
 const defaultDeps = (): AnamDeps => ({
   loadSdk: () => import('@anam-ai/js-sdk'),
   fetch: (...args) => fetch(...args),
@@ -82,6 +108,8 @@ export class AnamPresenter implements Presenter {
   // De greenscreenversie van Nova vragen (lib/greenscreen.ts): alleen als de pagina die vrijstaand
   // kan tonen (WebGL werkt). De server beslist of die er is; anders de gewone avatar.
   greenscreen = false;
+  // Welke greenscreenvariant (lib/greenscreen.ts), of null voor de standaard.
+  variant: string | null = null;
   private events: PresenterEvents;
   private deps: AnamDeps;
   private client: AnamClient | null = null; // verbonden en bruikbaar
@@ -147,7 +175,7 @@ export class AnamPresenter implements Presenter {
       const res = await this.deps.fetch('/api/anam/session', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ greenscreen: this.greenscreen }),
+        body: JSON.stringify({ greenscreen: this.greenscreen, variant: this.variant }),
       });
       const data = await res.json().catch(() => null);
       if (!current()) return false;
@@ -184,8 +212,10 @@ export class AnamPresenter implements Presenter {
       if (client && this.building === client) this.building = null;
       if (!current()) return client ? this.abandon(client) : false;
       console.error('[anam] verbinden mislukt:', err);
+      const code = errorCode(err);
+      this.deps.debug?.({ role: 'verbinden-mislukt', error: code ?? 'onbekend', status: errorStatus(err) });
       this.client = null;
-      this.events.onState('error', err instanceof Error && err.message.startsWith('De ') ? err.message : 'Verbinding mislukt. Probeer opnieuw.');
+      this.events.onState('error', connectMessage(err));
       throw err;
     }
   }

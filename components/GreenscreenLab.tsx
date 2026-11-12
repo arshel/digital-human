@@ -9,7 +9,10 @@ import { DEFAULT_KEY, DEFAULT_LAYOUT, layoutVars, type KeySettings, type Placeme
 // Testpagina voor Nova vrijstaand (alleen `npm run dev`): dezelfde onderdelen en CSS als de echte
 // pagina, met testmateriaal dat de browser zelf tekent. Geen Anam, geen kosten, geen bestanden.
 // Instellen via de knoppen of de adresbalk (voor schermafbeeldingen):
-//   ?bron=video|beeld|mp4|nova   ?achtergrond=nieuws|geen|kapot   ?webgl=uit   ?live=1
+//   ?bron=video|beeld|mp4|nova|colbert-frontaal|colbert-breed|colbert-gedraaid
+//   ?achtergrond=nieuws|geen|kapot   ?webgl=uit   ?live=1
+// De colbert-bronnen zijn de drie colbert-avatars van Anam (public/anam/varianten/): hun wachtvideo,
+// met dezelfde uitsnede en compressie als de stream.
 // bron=nova is een beeld uit de Anam-stream van de greenscreen-Nova (public/anam/nova-groen-stream.png):
 // het echte gezicht, met de videocompressie van de stream.
 // bron=mp4 is de gewone wachtvideo van Nova (geen greenscreen): die blijft dus rechthoekig, maar
@@ -107,6 +110,9 @@ function param(name: string) {
 }
 
 type Background = "nieuws" | "geen" | "kapot";
+const PORTRAITS = ["colbert-frontaal", "colbert-breed", "colbert-gedraaid"] as const;
+const SOURCES = ["video", "beeld", "mp4", "nova", ...PORTRAITS] as const;
+type Source = (typeof SOURCES)[number];
 
 // ?alleen=testbeeld: alleen het testbeeld, op ware grootte. Om het als bestand vast te leggen
 // (public/greenscreen-test/testbeeld.png), voor een test van de echte pagina.
@@ -127,12 +133,14 @@ function RawTestFrame() {
 
 export function GreenscreenLab() {
   const [raw, setRaw] = useState(false);
-  useEffect(() => setRaw(param("alleen") === "testbeeld"), []);
+  useEffect(() => {
+    setRaw(param("alleen") === "testbeeld");
+  }, []);
   return raw ? <RawTestFrame /> : <Lab />;
 }
 
 function Lab() {
-  const [source, setSource] = useState<"video" | "beeld" | "mp4" | "nova">("video");
+  const [source, setSource] = useState<Source>("video");
   const [background, setBackground] = useState<Background>("nieuws");
   const [forceFallback, setForceFallback] = useState(false);
   const [live, setLive] = useState(false);
@@ -146,10 +154,11 @@ function Lab() {
   const mp4 = useRef<HTMLVideoElement>(null);
   const image = useRef<HTMLImageElement>(null);
   const nova = useRef<HTMLImageElement>(null);
+  const portraits = useRef<Record<string, HTMLVideoElement | null>>({});
 
   useEffect(() => {
     const bron = param("bron");
-    setSource(bron === "beeld" || bron === "mp4" || bron === "nova" ? bron : "video");
+    setSource(SOURCES.includes(bron as Source) ? (bron as Source) : "video");
     const bg = param("achtergrond");
     setBackground(bg === "geen" || bg === "kapot" ? bg : "nieuws");
     setForceFallback(param("webgl") === "uit");
@@ -209,9 +218,10 @@ function Lab() {
   const keyed = !forceFallback && webgl === true && !failed;
   const style = useMemo(() => layoutVars(layout) as CSSProperties, [layout]);
   const bgImage = background === "nieuws" ? newsImage : background === "kapot" ? "https://images.cdn.nos.nl/bestaat-niet.webp" : null;
+  const still = () => (source === "nova" ? nova.current : (portraits.current[source] ?? null));
   const liveSource = () =>
-    source === "video" ? video.current : source === "mp4" ? mp4.current : source === "nova" ? nova.current : image.current;
-  const restSource = () => (source === "nova" ? nova.current : image.current);
+    source === "video" ? video.current : source === "mp4" ? mp4.current : source === "beeld" ? image.current : still();
+  const restSource = () => still() ?? image.current;
   const fade: CSSProperties = { opacity: live ? 0 : 1, transition: "opacity 450ms ease" };
 
   const frame = (kind: "computer" | "telefoon", size: CSSProperties) => (
@@ -260,7 +270,7 @@ function Lab() {
       <div className="lab-controls">
         <button
           type="button"
-          onClick={() => setSource(source === "video" ? "beeld" : source === "beeld" ? "mp4" : source === "mp4" ? "nova" : "video")}
+          onClick={() => setSource(SOURCES[(SOURCES.indexOf(source) + 1) % SOURCES.length])}
         >
           Bron: {source}
         </button>
@@ -293,6 +303,21 @@ function Lab() {
       <video ref={mp4} className="lab-hidden" src="/anam/nova-idle.mp4" autoPlay muted loop playsInline />
       {poster && <img ref={image} className="lab-hidden" src={poster} alt="" />}
       <img ref={nova} className="lab-hidden" src="/anam/nova-groen-stream.png" alt="" />
+      {PORTRAITS.map((name) => (
+        <video
+          key={name}
+          ref={(el) => {
+            portraits.current[name] = el;
+          }}
+          className="lab-hidden"
+          src={`/anam/varianten/${name}-idle.mp4`}
+          poster={`/anam/varianten/${name}-landscape.webp`}
+          autoPlay
+          muted
+          loop
+          playsInline
+        />
+      ))}
       <pre className="lab-settings">{JSON.stringify({ key: keySettings, layout }, null, 1)}</pre>
     </main>
   );

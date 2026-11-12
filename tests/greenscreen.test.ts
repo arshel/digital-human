@@ -11,6 +11,9 @@ import {
   layoutVars,
   presenterLayout,
   sessionAvatarId,
+  sessionVideoSize,
+  variantOrientation,
+  DEFAULT_LAYOUT_STAAND,
 } from '../lib/greenscreen.ts';
 
 // Nova vrijstaand: de instellingen, en de tekenlus met een nep-WebGL (in Node is er geen GPU).
@@ -39,6 +42,69 @@ describe('instellingen', () => {
     assert.equal(sessionAvatarId(false, env), 'gewoon', 'geen WebGL: de gewone avatar');
     assert.equal(sessionAvatarId(true, { ...env, NOVA_GREENSCREEN: undefined }), 'gewoon', 'greenscreen uit');
     assert.equal(sessionAvatarId(true, { ANAM_AVATAR_ID: 'gewoon' }), 'gewoon', 'geen greenscreen-avatar');
+  });
+
+  it('varianten: de trui eerst, dan de lijst; de pagina ziet geen avatar-id', () => {
+    const env = {
+      ...base,
+      ANAM_GREENSCREEN_AVATAR_ID: 'trui-id',
+      NOVA_GREENSCREEN_VARIANTS: JSON.stringify([
+        { id: 'colbert-frontaal', label: 'Colbert, frontaal', avatarId: 'avatar-123-frontaal', poster: '/anam/varianten/colbert-frontaal.png', idleVideo: '/anam/varianten/colbert-frontaal-idle.mp4' },
+        { id: 'colbert-gedraaid', label: 'Colbert, gedraaid', poster: '/anam/varianten/colbert-gedraaid.png' },
+        { id: 'Kapot Id!', avatarId: 'x', poster: '/a.png' },
+        { id: 'colbert-breed', avatarId: 'breed-id', poster: 'javascript:alert(1)' },
+      ]),
+    };
+    const anam = greenscreenConfig(env, 'anam')!;
+    assert.deepEqual(anam.variants.map((v) => v.id), ['trui', 'colbert-frontaal'], 'met Anam alleen varianten met een avatar-id; rommel valt af');
+    assert.equal(anam.variant, 'trui');
+    assert.ok(!JSON.stringify(anam).includes('avatar-123'), 'geen avatar-id naar de pagina');
+    assert.equal(anam.variants[1].idleVideo, '/anam/varianten/colbert-frontaal-idle.mp4');
+    const sim = greenscreenConfig(env, 'simulated')!;
+    assert.deepEqual(sim.variants.map((v) => v.id), ['trui', 'colbert-frontaal', 'colbert-gedraaid'], 'zonder Anam mag een variant zonder avatar');
+    assert.equal(sim.variants[1].idleVideo, null, 'wachtvideo alleen met Anam');
+    const chosen = greenscreenConfig({ ...env, NOVA_GREENSCREEN_VARIANT: 'colbert-frontaal' }, 'anam')!;
+    assert.equal(chosen.variant, 'colbert-frontaal');
+    assert.equal(chosen.poster, '/anam/varianten/colbert-frontaal.png');
+  });
+
+  it('een sessie krijgt de avatar van de gekozen variant', () => {
+    const env = {
+      ...base,
+      ANAM_AVATAR_ID: 'gewoon',
+      ANAM_GREENSCREEN_AVATAR_ID: 'trui-id',
+      NOVA_GREENSCREEN_VARIANTS: JSON.stringify([{ id: 'colbert-frontaal', avatarId: 'frontaal-id', poster: '/f.png' }]),
+    };
+    assert.equal(sessionAvatarId(true, env, 'colbert-frontaal'), 'frontaal-id');
+    assert.equal(sessionAvatarId(true, env, 'bestaat-niet'), 'trui-id', 'onbekend: de standaard');
+    assert.equal(sessionAvatarId(true, { ...env, NOVA_GREENSCREEN_VARIANT: 'colbert-frontaal' }, null), 'frontaal-id');
+    assert.equal(sessionAvatarId(false, env, 'colbert-frontaal'), 'gewoon', 'geen WebGL: de gewone avatar');
+  });
+
+  it('staand: alleen ingesteld én met een staand beeld, op de pagina en in de sessie gelijk', () => {
+    const env = {
+      ...base,
+      ANAM_AVATAR_ID: 'gewoon',
+      ANAM_GREENSCREEN_AVATAR_ID: 'trui-id',
+      NOVA_GREENSCREEN_ORIENTATION: 'staand',
+      NOVA_GREENSCREEN_VARIANTS: JSON.stringify([
+        { id: 'colbert-frontaal', avatarId: 'frontaal-id', poster: '/f.webp', posterStaand: '/f-staand.webp' },
+        { id: 'colbert-breed', avatarId: 'breed-id', poster: '/b.webp', posterStaand: 'javascript:x' },
+      ]),
+    };
+    const config = greenscreenConfig(env, 'anam')!;
+    assert.equal(config.orientation, 'staand');
+    assert.deepEqual(config.layoutStaand, DEFAULT_LAYOUT_STAAND);
+    const [trui, frontaal, breed] = config.variants;
+    assert.equal(variantOrientation(config, frontaal), 'staand');
+    assert.equal(variantOrientation(config, trui), 'liggend', 'geen staand beeld: liggend');
+    assert.equal(breed.posterStaand, null, 'ongeldig pad valt af');
+    assert.equal(variantOrientation({ orientation: 'liggend' }, frontaal), 'liggend');
+    assert.deepEqual(sessionVideoSize(true, env, 'colbert-frontaal'), { width: 768, height: 1152 });
+    assert.equal(sessionVideoSize(true, env, 'colbert-breed'), null);
+    assert.equal(sessionVideoSize(true, env, null), null, 'standaard is de trui: liggend');
+    assert.equal(sessionVideoSize(false, env, 'colbert-frontaal'), null, 'geen WebGL: gewone avatar, liggend');
+    assert.equal(sessionVideoSize(true, { ...env, NOVA_GREENSCREEN_ORIENTATION: undefined }, 'colbert-frontaal'), null);
   });
 
   it('bijstellen met JSON: alleen geldige velden, binnen grenzen', () => {
@@ -230,5 +296,8 @@ describe('tekenen', () => {
     assert.deepEqual(sourceSize(video(true)), { width: 1152, height: 768 });
     assert.deepEqual(sourceSize({ complete: true, naturalWidth: 720, naturalHeight: 480 } as Source), { width: 720, height: 480 });
     assert.equal(sourceSize({ complete: false, naturalWidth: 0, naturalHeight: 0 } as Source), null);
+    const canvas = (frame?: string) => ({ getContext() {}, width: 768, height: 1152, dataset: frame ? { frame } : {} }) as unknown as Source;
+    assert.equal(sourceSize(canvas()), null, 'samengesteld beeld nog niet getekend');
+    assert.deepEqual(sourceSize(canvas('1')), { width: 768, height: 1152 });
   });
 });

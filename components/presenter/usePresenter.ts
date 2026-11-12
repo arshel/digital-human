@@ -14,13 +14,15 @@ const IDLE_MS = 2 * 60 * 1000;
 // `busy`: de pagina maakt nog een antwoord (het taalmodel loopt). Dan geen inactiviteitstimer.
 // `onTiming`: meetpunten van de presentator, voor de ontwikkelserver.
 // `onHeard`: een gesproken vraag, zoals Anam die verstond.
-// `greenscreen`: Anam om de greenscreenversie van Nova vragen (de pagina toont die vrijstaand).
+// `greenscreen`: Anam om de greenscreenversie van Nova vragen (de pagina toont die vrijstaand),
+// en welke variant (`variant`, of null voor de standaard).
 export function usePresenter(
   mode: 'simulated' | 'anam' | null,
   busy = false,
   onTiming?: (event: TimingEvent) => void,
   onHeard?: (text: string) => void,
   greenscreen = false,
+  variant: string | null = null,
 ) {
   const video = useRef<HTMLVideoElement>(null);
   const engine = useRef<Presenter | null>(null);
@@ -34,10 +36,10 @@ export function usePresenter(
   timingRef.current = onTiming;
   const heardRef = useRef(onHeard);
   heardRef.current = onHeard;
-  const greenscreenRef = useRef(greenscreen);
-  greenscreenRef.current = greenscreen;
+  const greenscreenRef = useRef({ greenscreen, variant });
+  greenscreenRef.current = { greenscreen, variant };
   // Geldt voor de volgende verbinding: een lopende stream wisselt niet van avatar.
-  if (engine.current instanceof AnamPresenter) engine.current.greenscreen = greenscreen;
+  if (engine.current instanceof AnamPresenter) Object.assign(engine.current, { greenscreen, variant });
 
   const get = useCallback(() => {
     if (!engine.current && mode) {
@@ -52,7 +54,7 @@ export function usePresenter(
         onHeard: (text: string) => heardRef.current?.(text),
       };
       engine.current = mode === 'anam' && video.current ? new AnamPresenter(video.current, events) : new SimulatedPresenter(events);
-      if (engine.current instanceof AnamPresenter) engine.current.greenscreen = greenscreenRef.current;
+      if (engine.current instanceof AnamPresenter) Object.assign(engine.current, greenscreenRef.current);
       setTiming(engine.current.timing);
     }
     return engine.current;

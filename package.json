@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@anam-ai/js-sdk": "4.29.1",
+    "hls.js": "^1.6.13",
     "next": "^15.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

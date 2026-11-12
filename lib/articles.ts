@@ -25,6 +25,8 @@ export type NewsArticle = {
   image: string | null;
   // Nederlands nieuws, of buitenlands nieuws: dat laatste alleen voor vragen, niet in de lijst.
   region: Region;
+  // Een NOS-video in beeld in plaats van de afbeelding (test, NOVA_NEWS_VIDEO=aan; lib/video.ts).
+  video?: boolean;
   // Redactionele hulpnotities, alleen in de testselectie. Bij verschil geldt de brontekst.
   keyFacts: string[];
   conditions: string[];
@@ -35,7 +37,7 @@ export type NewsArticle = {
 
 export type ArticleMeta = Pick<
   NewsArticle,
-  'id' | 'shortTitle' | 'title' | 'publisher' | 'url' | 'published' | 'updated' | 'version' | 'image' | 'region'
+  'id' | 'shortTitle' | 'title' | 'publisher' | 'url' | 'published' | 'updated' | 'version' | 'image' | 'region' | 'video'
 >;
 
 export type NewsMode = 'test' | 'live' | 'eval';
@@ -59,8 +61,8 @@ type TestDraft = Omit<Draft, 'image' | 'region'> & { image?: string | null };
 const TEST_ARTICLES: NewsArticle[] = (testSet.articles as TestDraft[]).map((a) => versioned({ ...a, image: a.image ?? null, region: 'nl' }));
 
 export function meta(a: NewsArticle): ArticleMeta {
-  const { id, shortTitle, title, publisher, url, published, updated, version, image, region } = a;
-  return { id, shortTitle, title, publisher, url, published, updated, version, image, region };
+  const { id, shortTitle, title, publisher, url, published, updated, version, image, region, video } = a;
+  return { id, shortTitle, title, publisher, url, published, updated, version, image, region, video: !!video };
 }
 
 // live is false als de NOS-feed niet bereikbaar was: dan zijn het de verzonnen demo-artikelen
@@ -100,6 +102,7 @@ function fromFeed(s: Article): NewsArticle {
     body: s.body,
     image: s.image,
     region: s.region,
+    video: !!s.video && process.env.NOVA_NEWS_VIDEO === 'aan',
     keyFacts: [],
     conditions: [],
     uncertainties: [],

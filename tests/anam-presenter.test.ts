@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
-import { AnamPresenter, type AnamDeps } from '../components/presenter/anam.ts';
+import { AnamPresenter, connectMessage, type AnamDeps } from '../components/presenter/anam.ts';
 import type { TimingEvent } from '../components/presenter/types.ts';
 
 // De Anam-presentator met een nagemaakte SDK: geen netwerk, geen Anam-minuten. De nabootsing
@@ -320,4 +320,12 @@ describe('AnamPresenter', () => {
     assert.deepEqual(t.heard, []);
     assert.equal(t.calls.micStopped, 1);
   });
+});
+
+it('verbinden mislukt: een bekende Anam-fout geeft een eigen melding', async () => {
+
+  const limit = Object.assign(new Error('Usage limit reached, please upgrade your plan'), { code: 'CLIENT_ERROR_CODE_USAGE_LIMIT_REACHED', statusCode: 429 });
+  assert.match(connectMessage(limit), /minuten bij Anam zijn op/);
+  assert.equal(connectMessage(new Error('De avatar kan nu niet starten.')), 'De avatar kan nu niet starten.');
+  assert.equal(connectMessage(new Error('iets anders')), 'Verbinding mislukt. Probeer opnieuw.');
 });

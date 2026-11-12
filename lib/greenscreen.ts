@@ -12,6 +12,15 @@
 //   NOVA_GREENSCREEN_IDLE_VIDEO=/anam/nova-groen.mp4    wachtvideo, optioneel (alleen met Anam)
 //   ANAM_GREENSCREEN_AVATAR_ID=...                      de Anam-avatar met groene achtergrond,
 //                                                       verplicht met AVATAR_MODE=anam
+// Meer varianten om te vergelijken (JSON-lijst; avatarId blijft op de server):
+//   NOVA_GREENSCREEN_VARIANTS=[{"id":"colbert-frontaal","label":"Colbert, frontaal","avatarId":"...",
+//     "poster":"/anam/varianten/colbert-frontaal.png","idleVideo":"/anam/varianten/colbert-frontaal-idle.mp4"}]
+//   NOVA_GREENSCREEN_VARIANT=colbert-frontaal        welke standaard is (anders de eerste, "trui")
+// Staand in beeld (meer van Nova: tot onder de borst), voor varianten met een "posterStaand":
+//   NOVA_GREENSCREEN_ORIENTATION=staand              anders liggend (de standaard)
+//   NOVA_PRESENTER_LAYOUT_STAAND={...}               zoals NOVA_PRESENTER_LAYOUT, voor staand
+// Kiezen tijdens het testen: ?avatar=colbert-frontaal in de adresbalk, of Testopties. Een andere
+// avatar geldt vanaf de volgende verbinding: Anam wisselt niet midden in een sessie.
 // Bijstellen (JSON, alleen de velden die je wilt veranderen):
 //   NOVA_PRESENTER_LAYOUT={"desktop":{"side":"right","inset":-8,"bottom":0,"height":60}}
 //   NOVA_GREENSCREEN_KEY={"minGreen":0.12,"greenBias":0.12,"softness":0.14,"spill":0.9}
@@ -48,15 +57,86 @@ export const DEFAULT_LAYOUT: PresenterLayout = {
   mobile: { side: 'center', inset: 0, bottom: 0, height: 70 },
 };
 
+// Staand (768x1152) laat Anam meer van Nova zien: dezelfde schaal, maar ook de borst. Om het hoofd
+// even groot te houden als liggend is het canvas anderhalf keer zo hoog. Iets minder ver buiten
+// beeld: staand reikt de colbert tot de rand van het beeld.
+export const DEFAULT_LAYOUT_STAAND: PresenterLayout = {
+  desktop: { side: 'right', inset: 2, bottom: 0, height: 90 },
+  mobile: { side: 'center', inset: 0, bottom: 0, height: 100 },
+};
+
+export type Orientation = 'liggend' | 'staand';
+// De videomaten die Anam voor Cara 4 ondersteunt (anam.ai/docs/personas/session/video).
+export const VIDEO_SIZE: Record<Orientation, { width: number; height: number }> = {
+  liggend: { width: 1152, height: 768 },
+  staand: { width: 768, height: 1152 },
+};
+// Waar het liggende beeld in het staande valt, gemeten op de drie colbert-avatars (10 november
+// 2026): dezelfde schaal, het liggende beeld 192 pixels naar links en 128 naar beneden. Een
+// liggende wachtvideo vult staand dus de rijen 128 tot 896; daaronder het stilstaande beeld.
+export const LIGGEND_IN_STAAND = { x: -192, y: 128 };
+
 export const DEFAULT_FOCUS = '50% 40%';
 
+// Een greenscreenversie van Nova: wat de pagina ervan ziet (zonder avatar-id).
+// posterStaand: het stilstaande beeld van de staande stream; zonder blijft de variant liggend.
+export type GreenscreenVariant = { id: string; label: string; poster: string; posterStaand: string | null; idleVideo: string | null };
+type ServerVariant = GreenscreenVariant & { avatarId: string | null };
+
 export type GreenscreenConfig = {
+  // De standaardvariant (de eerste of NOVA_GREENSCREEN_VARIANT): voor wie niets kiest.
   poster: string;
   idleVideo: string | null;
+  variant: string;
+  variants: GreenscreenVariant[];
+  orientation: Orientation;
   key: KeySettings;
   layout: PresenterLayout;
+  layoutStaand: PresenterLayout;
   backgroundFocus: string;
 };
+
+const ID = /^[a-z0-9-]{1,40}$/;
+const FILE = /^(\/[\w./-]+|https:\/\/[^\s"'<>]+)$/;
+
+// Alle varianten met hun avatar-id: eerst de bestaande ("trui"), dan NOVA_GREENSCREEN_VARIANTS.
+// Ongeldige of dubbele items vallen af. Met Anam alleen varianten met een avatar-id.
+function serverVariants(env: Env, avatarMode: 'simulated' | 'anam'): ServerVariant[] {
+  const list: ServerVariant[] = [];
+  const poster = env.NOVA_GREENSCREEN_POSTER?.trim() ?? '';
+  // Voor een sessie is alleen de avatar nodig; de pagina krijgt alleen varianten met een beeld.
+  if (poster || env.ANAM_GREENSCREEN_AVATAR_ID?.trim()) {
+    list.push({
+      id: 'trui',
+      label: 'Trui',
+      poster,
+      posterStaand: null,
+      idleVideo: env.NOVA_GREENSCREEN_IDLE_VIDEO?.trim() || null,
+      avatarId: env.ANAM_GREENSCREEN_AVATAR_ID?.trim() || null,
+    });
+  }
+  let extra: unknown = [];
+  try {
+    extra = JSON.parse(env.NOVA_GREENSCREEN_VARIANTS || '[]');
+  } catch {
+    extra = [];
+  }
+  for (const v of Array.isArray(extra) ? extra : []) {
+    if (!v || typeof v !== 'object') continue;
+    const { id, label, avatarId, poster: p, posterStaand, idleVideo } = v as Record<string, unknown>;
+    if (typeof id !== 'string' || !ID.test(id) || list.some((x) => x.id === id)) continue;
+    if (typeof p !== 'string' || !FILE.test(p)) continue;
+    list.push({
+      id,
+      label: typeof label === 'string' && label.trim() ? label.trim().slice(0, 40) : id,
+      poster: p,
+      posterStaand: typeof posterStaand === 'string' && FILE.test(posterStaand) ? posterStaand : null,
+      idleVideo: typeof idleVideo === 'string' && FILE.test(idleVideo) ? idleVideo : null,
+      avatarId: typeof avatarId === 'string' && avatarId.trim() ? avatarId.trim() : null,
+    });
+  }
+  return avatarMode === 'anam' ? list.filter((v) => v.avatarId) : list;
+}
 
 type Env = Record<string, string | undefined>;
 
@@ -93,9 +173,16 @@ function placement(value: unknown, fallback: Placement): Placement {
   };
 }
 
-export function presenterLayout(text?: string): PresenterLayout {
+export function presenterLayout(text?: string, base: PresenterLayout = DEFAULT_LAYOUT): PresenterLayout {
   const v = json(text);
-  return { desktop: placement(v.desktop, DEFAULT_LAYOUT.desktop), mobile: placement(v.mobile, DEFAULT_LAYOUT.mobile) };
+  return { desktop: placement(v.desktop, base.desktop), mobile: placement(v.mobile, base.mobile) };
+}
+
+const orientation = (env: Env): Orientation => (env.NOVA_GREENSCREEN_ORIENTATION?.trim() === 'staand' ? 'staand' : 'liggend');
+
+// Staand alleen als het zo is ingesteld én de variant een staand beeld heeft.
+export function variantOrientation(config: Pick<GreenscreenConfig, 'orientation'>, variant: GreenscreenVariant | null): Orientation {
+  return config.orientation === 'staand' && variant?.posterStaand ? 'staand' : 'liggend';
 }
 
 export function backgroundFocus(text?: string) {
@@ -106,23 +193,43 @@ export function backgroundFocus(text?: string) {
 // anders zou het stilstaande beeld vrijstaand zijn en de stream een groene rechthoek.
 export function greenscreenConfig(env: Env, avatarMode: 'simulated' | 'anam'): GreenscreenConfig | null {
   if (env.NOVA_GREENSCREEN !== 'aan') return null;
-  const poster = env.NOVA_GREENSCREEN_POSTER?.trim();
-  if (!poster) return null;
-  if (avatarMode === 'anam' && !env.ANAM_GREENSCREEN_AVATAR_ID?.trim()) return null;
+  // De wachtvideo alleen met Anam: zonder stream zou Nova vóór Start bewegen en daarna stilstaan.
+  const variants = serverVariants(env, avatarMode)
+    .filter((v) => v.poster)
+    .map(({ avatarId: _, ...v }) => ({ ...v, idleVideo: avatarMode === 'anam' ? v.idleVideo : null }));
+  if (!variants.length) return null;
+  const chosen = variants.find((v) => v.id === env.NOVA_GREENSCREEN_VARIANT?.trim()) ?? variants[0];
   return {
-    poster,
-    idleVideo: avatarMode === 'anam' ? env.NOVA_GREENSCREEN_IDLE_VIDEO?.trim() || null : null,
+    poster: chosen.poster,
+    idleVideo: chosen.idleVideo,
+    variant: chosen.id,
+    variants,
+    orientation: orientation(env),
     key: keySettings(env.NOVA_GREENSCREEN_KEY),
     layout: presenterLayout(env.NOVA_PRESENTER_LAYOUT),
+    layoutStaand: presenterLayout(env.NOVA_PRESENTER_LAYOUT_STAAND, DEFAULT_LAYOUT_STAAND),
     backgroundFocus: backgroundFocus(env.NOVA_BACKGROUND_FOCUS),
   };
 }
 
 // Welke Anam-avatar een sessie krijgt. De greenscreenversie alleen als de pagina erom vraagt
 // (WebGL werkt) en die is ingesteld; anders de gewone, met de bestaande weergave.
-export function sessionAvatarId(wantsGreenscreen: boolean, env: Env): string | undefined {
-  const green = env.NOVA_GREENSCREEN === 'aan' ? env.ANAM_GREENSCREEN_AVATAR_ID?.trim() : undefined;
-  return (wantsGreenscreen && green) || env.ANAM_AVATAR_ID;
+// Met `variant` de avatar van die variant; onbekend: de standaardvariant.
+function sessionVariant(wantsGreenscreen: boolean, env: Env, variant?: string | null): ServerVariant | null {
+  if (!wantsGreenscreen || env.NOVA_GREENSCREEN !== 'aan') return null;
+  const list = serverVariants(env, 'anam');
+  return list.find((v) => v.id === variant) ?? list.find((v) => v.id === env.NOVA_GREENSCREEN_VARIANT?.trim()) ?? list[0] ?? null;
+}
+
+export function sessionAvatarId(wantsGreenscreen: boolean, env: Env, variant?: string | null): string | undefined {
+  return sessionVariant(wantsGreenscreen, env, variant)?.avatarId ?? env.ANAM_AVATAR_ID;
+}
+
+// De videomaat voor de sessie: staand alleen voor een greenscreenvariant met een staand beeld, net
+// als op de pagina (variantOrientation). Anders niets meegeven: dan de standaard van Anam (liggend).
+export function sessionVideoSize(wantsGreenscreen: boolean, env: Env, variant?: string | null) {
+  const chosen = sessionVariant(wantsGreenscreen, env, variant);
+  return chosen?.avatarId && chosen.posterStaand && orientation(env) === 'staand' ? VIDEO_SIZE.staand : null;
 }
 
 // CSS-variabelen voor het presentatorvak. De stylesheet kiest de computer- of telefoonset met een

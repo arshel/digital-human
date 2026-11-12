@@ -53,6 +53,13 @@ export function mergeFeeds<T extends { id: string; sourceUrl: string; title: str
   return merged;
 }
 
+// Een videobericht: de NOS-videofeed (nosnieuwsvideo) geeft de duur van de video mee,
+// <itunes:duration>00:00:44</itunes:duration>. Het videobestand zelf staat niet in de feed, wel op
+// de NOS-pagina (lib/video.ts).
+export function feedHasVideo(item: string): boolean {
+  return /<itunes:duration>\s*\d/.test(item);
+}
+
 // De afbeelding van een bericht: <enclosure type="image/webp" url="https://images.cdn.nos.nl/…"/>.
 // Alleen een https-adres van een afbeelding, anders null.
 export function feedImage(item: string): string | null {

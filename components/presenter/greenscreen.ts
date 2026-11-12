@@ -12,7 +12,9 @@ import type { KeySettings } from '../../lib/greenscreen.ts';
 // Lukt WebGL niet, of gaat het tijdens het tekenen mis (context kwijt, bron niet te lezen), dan
 // meldt onError dat één keer en stopt de lus: de pagina valt dan terug op de gewone weergave.
 
-export type Source = HTMLVideoElement | HTMLImageElement;
+// Een canvas als bron: het samengestelde staande wachtbeeld (idleComposite.ts). Dat zet in
+// dataset.frame een nummer dat ophoogt bij elk nieuw beeld; zonder nummer is het nog niet klaar.
+export type Source = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement;
 
 type CanvasLike = {
   width: number;
@@ -77,6 +79,9 @@ export function sourceSize(source: Source | null): { width: number; height: numb
   if (!source) return null;
   if ('videoWidth' in source) {
     return source.readyState >= 2 && source.videoWidth > 0 ? { width: source.videoWidth, height: source.videoHeight } : null;
+  }
+  if ('getContext' in source) {
+    return source.dataset?.frame && source.width > 0 ? { width: source.width, height: source.height } : null;
   }
   return source.complete && source.naturalWidth > 0 ? { width: source.naturalWidth, height: source.naturalHeight } : null;
 }
@@ -217,7 +222,7 @@ export class GreenScreenRenderer {
     const source = this.source();
     const size = sourceSize(source);
     if (!gl || !size || !source || !this.uniforms) return;
-    const time = 'currentTime' in source ? source.currentTime : 0;
+    const time = 'currentTime' in source ? source.currentTime : 'getContext' in source ? Number(source.dataset.frame) : 0;
     const settings = JSON.stringify(this.settings);
     const l = this.last;
     if (l && l.source === source && l.time === time && l.settings === settings && l.width === size.width && l.height === size.height) return;
